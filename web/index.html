@@ -1055,12 +1055,9 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
   var state = {
     mode: "chords",          // "chords" or "fretboard" - a state, never a route
     tuning: "standard",
-    tunings: [],
-    qualities: [],
     quizKinds: [],
     root: "C",
     quality: "",
-    chord: null,             // the last answer from the engine about this chord
     shapes: [],
     shapeIndex: 0,
     simpleOnly: false,
@@ -1069,7 +1066,6 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
     showNames: true,
     lit: "",                 // a note lit up everywhere it lives
     litPositions: [],
-    fromFret: 0,
     toFret: 12,
     board: null,             // the notes of the neck, from the engine
     quiz: {
@@ -1499,7 +1495,6 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
       return;
     }
 
-    state.chord = answer;
     state.shapes = answer.shapes;
     state.shapeIndex = 0;
     state.holding = false;
@@ -1912,7 +1907,6 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
     var tunings = await call("guitarTunings", [], []);
 
     if (tunings && tunings.ok) {
-      state.tunings = tunings.tunings;
       el.tuning.textContent = "";
 
       tunings.tunings.forEach(function (tuning) {
@@ -1929,7 +1923,6 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
     var qualities = await call("guitarChordQualities", [], []);
 
     if (qualities && qualities.ok) {
-      state.qualities = qualities.qualities;
       el.qualities.textContent = "";
 
       var families = [];

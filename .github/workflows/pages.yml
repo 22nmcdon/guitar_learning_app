@@ -1,0 +1,91 @@
+# Publishes web/ to GitHub Pages.
+#
+# The WebAssembly engine is built here rather than committed - web/dist and
+# web/guitar-engine.js are both gitignored, and a binary in the tree would go
+# stale the first time the engine changed without anyone noticing.
+name: Pages
+
+on:
+  push:
+    branches: ["claude/cool-brahmagupta-ymparb"]
+  workflow_dispatch:
+
+# One deployment at a time, and never cancel one halfway: a half-published site
+# is worse than an old one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    name: Build the WebAssembly engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.61
+          actions-cache-folder: emsdk-cache
+
+      - name: Build the page
+        run: |
+          mkdir -p _site
+          ./web/build.sh "$GITHUB_WORKSPACE/_site"
+          cp web/index.html web/sw.js _site/
+
+          # Stamp the build into the page, so the site can be asked what it is
+          # serving instead of the deploy log having to be read. The page also
+          # asks for its engine at this stamp, so a cached engine can never be
+          # paired with a fresher page.
+          build="${GITHUB_SHA:0:7} $(date -u '+%Y-%m-%d %H:%M')Z"
+          sed -i "s/__GUITAR_BUILD__/$build/" _site/index.html
+          if grep -q "__GUITAR_BUILD__" _site/index.html; then
+            echo "::error::the build stamp was not replaced"
+            exit 1
+          fi
+
+          echo "stamped: $build"
+          # Pages runs Jekyll over the upload unless told not to, and Jekyll
+          # would drop any file whose name begins with an underscore.
+          touch _site/.nojekyll
+
+      - name: Check the page has something to serve
+        run: |
+          test -s _site/index.html
+          test -s _site/guitar-engine.js
+          test -s _site/sw.js
+          ls -lh _site
+
+      # A build that passes has never been the thing that goes wrong here: the
+      # page has to load its engine, draw a neck and answer a tap, and none of
+      # that is proved by anything compiling. This drives the built page in a
+      # real browser and fails the job instead of the visitor.
+      - name: Install a browser to test with
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+
+      - name: Check the built page boots
+        run: node web/smoke-test.mjs "$GITHUB_WORKSPACE/_site"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy to Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
