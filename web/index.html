@@ -1,0 +1,2167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Guitar Learning App</title>
+<!-- Replaced with the commit and the time by the Pages workflow, and left
+     alone everywhere else. It exists so that "is the site actually serving
+     what I pushed?" is a question you answer by looking rather than by
+     digging through deploy logs. -->
+<meta name="guitar-build" content="__GUITAR_BUILD__">
+<!-- The webfonts are requested by script rather than written here with an href,
+     and only when this page is served over the web. The desktop app runs it in a
+     webview that may have no route to the internet, and a webview waiting on a
+     font it will never receive paints no text at all - an invisible interface is
+     far worse than one in the fallback faces. Every family has a real fallback
+     in the stack below, which is what the app uses. -->
+<link id="webfonts"
+      data-href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=Cormorant+Garamond:ital,wght@0,500;1,500&family=Jost:wght@300;400;500;600&display=swap">
+
+<style>
+/* ---------------------------------------------------------------------------
+   The Guitar Learning App - one interface, served here and hosted by the
+   desktop app in a webview. The theory engine is the same C++ either way.
+
+   Cream paper, charcoal ink, rosewood and brass: a chord diagram in a good
+   method book, rather than a screenshot of a tuner app.
+--------------------------------------------------------------------------- */
+:root {
+  --cream:      #faf6f0;
+  --cream-2:    #f2ebe1;
+  --paper:      #fffcf7;
+  --charcoal:   #241f1d;
+  --blush:      #d9a6a0;
+  --blush-deep: #c07f79;
+  --gold:       #b08d57;
+  --line:       #e4d9cc;
+  --text:       #3a332f;
+  --text-soft:  #6b615a;
+
+  /* The instrument. A fretboard is rosewood, the frets are nickel and the nut
+     is bone, and drawing it in greys makes it a spreadsheet. */
+  --rosewood:   #4b3227;
+  --rosewood-2: #5d4033;
+  --fretwire:   #cfc6ba;
+  --bone:       #efe6d6;
+  --string:     #b9ad98;
+
+  /* What a note is, in chord practice. These four mean the same thing in both
+     modes, which is why - unlike the accent below - they do not move when the
+     mode does. */
+  --root:       #c0564a;
+  --third:      #6f7f63;
+  --fifth:      #b08d57;
+  --extension:  #3f8f88;
+  --outside:    #a4553f;
+
+  /* The accent, which does move: chord practice is blush, learning the neck is
+     teal. One token, so every panel changes together and nothing has to know
+     which mode it is in. */
+  --accent:      var(--blush-deep);
+  --wash:        rgba(217, 166, 160, 0.16);
+  --wash-strong: rgba(217, 166, 160, 0.3);
+
+  --serif: "Playfair Display", Georgia, "Times New Roman", serif;
+  --script: "Cormorant Garamond", Georgia, serif;
+  --sans: "Jost", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, Menlo, Consolas, monospace;
+
+  --max: 1080px;
+}
+
+body[data-mode="fretboard"] {
+  --accent: #35786f;
+  --wash: rgba(63, 143, 136, 0.14);
+  --wash-strong: rgba(63, 143, 136, 0.26);
+}
+
+* { box-sizing: border-box; }
+
+/* The browser's own rule for this is the weakest there is, so any class here
+   that sets `display` silently beats it and the element stays on screen. One
+   rule, stated once, so hiding something needs no CSS at all. */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--cream);
+  color: var(--text);
+  font-family: var(--sans);
+  font-weight: 300;
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-family: var(--serif);
+  font-weight: 600;
+  color: var(--charcoal);
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 500;
+  margin: 0 0 12px;
+}
+
+button { font-family: inherit; cursor: pointer; }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.wrap {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding-inline: 24px;
+}
+
+/* --- masthead ------------------------------------------------------------ */
+.masthead {
+  padding-block: 26px 18px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 28px;
+}
+.masthead h1 {
+  font-size: clamp(26px, 4vw, 34px);
+  line-height: 1.1;
+  text-wrap: balance;
+}
+.masthead h1 em { font-style: italic; color: var(--accent); }
+
+/* Two readings of the same line, stacked in one grid cell.
+
+   The lede is a different length in each mode, and hiding one outright let
+   everything below it jump by a line the moment the mode changed. Here the
+   cell is as tall as the longer of the two, and the one not showing keeps its
+   space rather than giving it up - so `applyMode` swaps these by visibility
+   and not by `hidden`. */
+.mode-stack { display: grid; }
+.mode-stack > * { grid-area: 1 / 1; }
+.mode-stack > [data-for="fretboard"] { visibility: hidden; }
+
+.masthead .lede {
+  font-family: var(--script);
+  font-style: italic;
+  font-size: 18px;
+  color: var(--text-soft);
+  margin: 4px 0 0;
+  max-width: 62ch;
+}
+.status {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--text-soft);
+  border: 1px solid var(--line);
+  border-radius: 30px;
+  padding: 5px 15px;
+  white-space: nowrap;
+}
+.status[data-state="ready"] { color: var(--gold); border-color: var(--gold); }
+.status[data-state="failed"] { color: var(--outside); border-color: var(--outside); }
+
+.masthead-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px 14px;
+  min-width: 0;
+}
+
+/* Hosted by the desktop app: the window's own title bar already names this, so
+   the masthead stands down and gives the neck the height instead. */
+body.in-app .masthead { padding-block: 14px 12px; }
+body.in-app .masthead h1 { font-size: 22px; }
+
+/* --- the two modes -------------------------------------------------------- */
+.modes {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 30px;
+  overflow: hidden;
+  background: var(--paper);
+}
+.modes button {
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 8px 18px;
+}
+.modes button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--paper);
+}
+
+select, .field {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 10px;
+}
+
+.ghost {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--text);
+  border-radius: 30px;
+  padding: 8px 18px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  transition: border-color 0.15s, color 0.15s;
+}
+.ghost:hover { border-color: var(--accent); color: var(--accent); }
+.ghost[disabled] { opacity: 0.45; cursor: default; }
+.ghost.solid {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--paper);
+}
+.ghost.solid:hover { color: var(--paper); opacity: 0.9; }
+
+/* --- the neck ------------------------------------------------------------- */
+.neck-section { padding-block: 26px 10px; }
+
+.neck-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 18px;
+  margin-bottom: 12px;
+}
+.neck-head h2 { font-size: 19px; }
+.neck-head .hint {
+  font-family: var(--script);
+  font-style: italic;
+  font-size: 16px;
+  color: var(--text-soft);
+}
+
+/* Horizontal scroll rather than a second layout: a neck is wider than a phone
+   and always has been, and a twelve-fret diagram squeezed into 390px is a
+   diagram nobody can tap. */
+.neck-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 6px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* The two measurements the neck and the numbers under it both need, set on the
+   element that contains both. They were on .neck alone once, which left the
+   repeat() under the fret numbers referring to a variable that did not exist
+   there - an invalid grid-template-columns, silently ignored, and twelve fret
+   numbers in two columns down the side of the page. */
+.neck-scroll {
+  --fret-width: 62px;
+  --string-gap: 34px;
+}
+
+.neck {
+  display: grid;
+  grid-template-columns: 54px 46px repeat(var(--frets), var(--fret-width));
+  background: linear-gradient(180deg, var(--rosewood-2), var(--rosewood));
+  border-radius: 10px;
+  padding: 10px 0 6px;
+  width: max-content;
+  position: relative;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 2px 10px rgba(36,31,29,0.14);
+}
+
+.neck-row {
+  display: contents;
+}
+
+/* The string label column, outside the wood. Nothing here is placed into a
+   named column: the cells are appended in order and the grid lays them out row
+   by row, so adding a fret is adding a cell and not also editing a rule. */
+.string-label {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-right: 10px;
+  height: var(--string-gap);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--bone);
+  opacity: 0.8;
+  background: rgba(0,0,0,0.18);
+}
+
+/* The open-string column, left of the nut, which is where a chord box puts its
+   o and its x for the same reason. */
+.open-cell {
+  background: rgba(0,0,0,0.22);
+  border-right: 5px solid var(--bone);   /* the nut, which is bone and thicker */
+}
+
+.fret-cell, .open-cell {
+  position: relative;
+  height: var(--string-gap);
+  border: 0;
+  padding: 0;
+  background-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fret-cell { border-right: 2px solid rgba(207, 198, 186, 0.55); }
+
+/* The string itself, drawn across the cell. A background gradient did this
+   once and tiled: the moment a thickness was set for the wound strings it
+   repeated down the row and the neck came out striped. An element has one
+   height and stays where it is put. */
+.fret-cell::after, .open-cell::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: var(--gauge, 1.6px);
+  background: linear-gradient(180deg, #e3d9c6, var(--string));
+  pointer-events: none;
+}
+
+/* The wound strings really are thicker, and it is the quickest way to read
+   which row is which without counting from the edge. */
+.neck-row[data-string="0"] { --gauge: 4px; }
+.neck-row[data-string="1"] { --gauge: 3.2px; }
+.neck-row[data-string="2"] { --gauge: 2.6px; }
+.neck-row[data-string="3"] { --gauge: 2px; }
+
+.fret-cell:hover, .open-cell:hover { background-color: rgba(255,255,255,0.08); }
+
+/* A note on the neck. */
+.dot {
+  position: relative;
+  z-index: 2;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--paper);
+  background: var(--charcoal);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+}
+.dot[data-degree="R"]   { background: var(--root); }
+.dot[data-degree="3"], .dot[data-degree="b3"] { background: var(--third); }
+.dot[data-degree="5"]   { background: var(--fifth); }
+.dot[data-degree="outside"] { background: var(--outside); }
+.dot.muted-mark, .dot.open-mark {
+  background: transparent;
+  color: var(--bone);
+  font-size: 14px;
+  box-shadow: none;
+}
+/* The names of every fret, when they are all showing at once: text on the wood
+   rather than 78 dark discs, which read as 78 notes being played. */
+.dot.ghosted {
+  background: transparent;
+  color: rgba(239, 230, 214, 0.5);
+  box-shadow: none;
+  font-weight: 400;
+}
+.dot.lit { background: var(--accent); }
+.dot.answer { background: var(--extension); }
+.dot.asked {
+  background: transparent;
+  border: 2px dashed var(--bone);
+  color: var(--bone);
+}
+/* The barre, drawn as what it is: one finger lying across several strings.
+
+   Six separate dots at the same fret is a picture of six fingers, which is the
+   one thing the shape is not. The cells are adjacent rows in the grid, so a
+   background on each of them joins up into a bar with no gap to hide. */
+.fret-cell.barred::before {
+  content: "";
+  position: absolute;
+  inset: 0 22%;
+  background: rgba(239, 230, 214, 0.22);
+  pointer-events: none;
+}
+.neck-row.barre-top .fret-cell.barred::before { border-radius: 14px 14px 0 0; }
+.neck-row.barre-bottom .fret-cell.barred::before { border-radius: 0 0 14px 14px; }
+
+/* The fret numbers and the position dots, under the wood. */
+.fret-numbers {
+  display: grid;
+  grid-template-columns: 54px 46px repeat(var(--frets), var(--fret-width));
+  width: max-content;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--text-soft);
+  padding-top: 6px;
+}
+.fret-numbers span { text-align: center; }
+.fret-numbers span.marked { color: var(--accent); font-weight: 500; }
+
+/* Inlay dots, drawn on the wood itself rather than as another row - a guitar
+   has them between the strings, not underneath the neck. They sit under the
+   note markers, which is why the dots above set a z-index at all. */
+.fret-cell.inlaid::before {
+  content: "";
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(239, 230, 214, 0.42);
+  pointer-events: none;
+}
+
+/* --- panels --------------------------------------------------------------- */
+.panels {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 22px;
+  padding-block: 20px 40px;
+  align-items: start;
+}
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px 22px;
+}
+.card + .card { margin-top: 18px; }
+.card h3 {
+  font-size: 17px;
+  margin-bottom: 4px;
+}
+.card .sub {
+  font-family: var(--script);
+  font-style: italic;
+  color: var(--text-soft);
+  font-size: 16px;
+  margin: 0 0 14px;
+}
+
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.row.tight { gap: 6px; }
+.spread { justify-content: space-between; }
+
+/* --- the chord chooser ---------------------------------------------------- */
+.roots {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.roots button {
+  border: 1px solid var(--line);
+  background: var(--cream);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 9px 0;
+  font-size: 14px;
+}
+.roots button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--paper);
+}
+
+.qualities { display: flex; flex-direction: column; gap: 12px; }
+.quality-family > span {
+  display: block;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-size: 10px;
+  color: var(--text-soft);
+  margin-bottom: 6px;
+}
+.quality-family .row { gap: 6px; }
+.quality-family button {
+  border: 1px solid var(--line);
+  background: var(--cream);
+  color: var(--text);
+  border-radius: 20px;
+  padding: 5px 13px;
+  font-size: 13px;
+}
+.quality-family button[aria-pressed="true"] {
+  background: var(--charcoal);
+  border-color: var(--charcoal);
+  color: var(--paper);
+}
+
+/* --- the voicing card ----------------------------------------------------- */
+.voicing-name {
+  font-family: var(--serif);
+  font-size: 22px;
+  color: var(--charcoal);
+  margin: 0;
+}
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 3px 10px;
+  color: var(--text-soft);
+}
+.badge[data-level="open"]     { color: var(--third); border-color: var(--third); }
+.badge[data-level="easy"]     { color: var(--third); border-color: var(--third); }
+.badge[data-level="moderate"] { color: var(--gold); border-color: var(--gold); }
+.badge[data-level="hard"]     { color: var(--outside); border-color: var(--outside); }
+
+.voicing-note {
+  font-family: var(--script);
+  font-style: italic;
+  font-size: 17px;
+  color: var(--text-soft);
+  margin: 10px 0 14px;
+}
+
+.strings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+.strings-table th {
+  text-align: left;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 10px;
+  color: var(--text-soft);
+  border-bottom: 1px solid var(--line);
+  padding: 4px 6px;
+}
+.strings-table td {
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--cream-2);
+}
+.strings-table td.deg { font-weight: 500; }
+.strings-table td.deg[data-degree="R"] { color: var(--root); }
+.strings-table td.deg[data-degree="3"], .strings-table td.deg[data-degree="b3"] { color: var(--third); }
+.strings-table td.deg[data-degree="5"] { color: var(--fifth); }
+.strings-table tr.muted td { color: var(--text-soft); opacity: 0.6; }
+
+.counter {
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: var(--text-soft);
+  text-transform: uppercase;
+}
+
+.notes-line { font-size: 13px; color: var(--text-soft); }
+.notes-line b { color: var(--text); font-weight: 500; }
+
+/* --- reading what is held ------------------------------------------------- */
+.reading {
+  border-left: 3px solid var(--accent);
+  padding-left: 14px;
+  min-height: 52px;
+}
+.reading .verdict {
+  font-family: var(--serif);
+  font-size: 19px;
+  color: var(--charcoal);
+}
+.reading .detail { font-size: 14px; color: var(--text-soft); }
+.reading[data-state="right"] { border-color: var(--third); }
+.reading[data-state="wrong"] { border-color: var(--outside); }
+
+.alternates { font-size: 12.5px; color: var(--text-soft); margin-top: 8px; }
+
+/* --- the quiz ------------------------------------------------------------- */
+.question {
+  font-family: var(--serif);
+  font-size: 22px;
+  color: var(--charcoal);
+  margin: 0 0 4px;
+}
+.question-detail {
+  font-family: var(--script);
+  font-style: italic;
+  font-size: 17px;
+  color: var(--text-soft);
+  margin: 0 0 16px;
+}
+.choices {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.choices button {
+  border: 1px solid var(--line);
+  background: var(--cream);
+  border-radius: 8px;
+  padding: 12px 0;
+  font-size: 16px;
+  color: var(--text);
+}
+.choices button:hover { border-color: var(--accent); }
+.choices button.right { background: var(--third); border-color: var(--third); color: var(--paper); }
+.choices button.wrong { background: var(--outside); border-color: var(--outside); color: var(--paper); }
+.choices button[disabled] { cursor: default; }
+
+.tally {
+  display: flex;
+  gap: 18px;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+  margin-top: 14px;
+}
+.tally b { color: var(--charcoal); font-size: 15px; font-weight: 500; letter-spacing: 0; }
+
+.observations { margin: 10px 0 0; padding-left: 18px; }
+.observations li { font-size: 14px; color: var(--text-soft); margin-bottom: 6px; }
+
+.per-string { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+.per-string td { padding: 4px 6px; border-bottom: 1px solid var(--cream-2); }
+.per-string .bar { height: 6px; background: var(--cream-2); border-radius: 4px; overflow: hidden; min-width: 60px; }
+.per-string .bar span { display: block; height: 100%; background: var(--accent); }
+
+/* --- dialogs -------------------------------------------------------------- */
+dialog {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  color: var(--text);
+  padding: 26px 28px;
+  max-width: 560px;
+  width: calc(100% - 32px);
+}
+dialog::backdrop { background: rgba(36, 31, 29, 0.42); }
+dialog h3 { font-size: 20px; margin-bottom: 8px; }
+dialog p { font-size: 14.5px; }
+dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; }
+
+.key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-size: 12.5px;
+  color: var(--text-soft);
+  margin-top: 12px;
+}
+.key i {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+
+/* --- colophon ------------------------------------------------------------- */
+.colophon {
+  border-top: 1px solid var(--line);
+  padding-block: 22px 40px;
+  font-size: 12.5px;
+  color: var(--text-soft);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 22px;
+}
+.colophon code { font-family: var(--mono); font-size: 11.5px; }
+
+/* --- one breakpoint ------------------------------------------------------- */
+@media (max-width: 760px) {
+  .wrap { padding-inline: 16px; }
+  .panels { grid-template-columns: 1fr; gap: 16px; }
+  .masthead { padding-block: 18px 14px; }
+  .masthead-controls { justify-content: flex-start; }
+  .neck-scroll { --fret-width: 54px; --string-gap: 32px; }
+  .roots { grid-template-columns: repeat(4, 1fr); }
+  .choices { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body data-mode="chords">
+
+<header class="masthead wrap">
+  <div class="mode-stack">
+    <div data-for="chords">
+      <h1>Chords on the <em>fretboard</em></h1>
+      <p class="lede">Pick a chord and see where it sits under your hand - then ask for another
+         way of playing it, and another, until the neck stops being six separate strings.</p>
+    </div>
+    <div data-for="fretboard">
+      <h1>Learn the <em>fretboard</em></h1>
+      <p class="lede">Every fret has a name. Twelve of them, repeating - which is a much smaller
+         thing to learn than it looks from the outside.</p>
+    </div>
+  </div>
+
+  <div class="masthead-controls">
+    <div class="modes" role="group" aria-label="What to practise">
+      <button type="button" id="modeChords" aria-pressed="true">Chords</button>
+      <button type="button" id="modeFretboard" aria-pressed="false">Fretboard</button>
+    </div>
+    <select id="tuning" aria-label="Tuning"></select>
+    <button type="button" class="ghost" id="helpButton" aria-label="What am I looking at">?</button>
+    <span class="status" id="engineStatus" data-state="loading">starting the engine</span>
+  </div>
+</header>
+
+<main>
+  <section class="neck-section wrap">
+    <div class="neck-head">
+      <h2 id="neckTitle">The neck</h2>
+      <span class="hint" id="neckHint">Tap a fret to hear it and to see what it is.</span>
+    </div>
+
+    <div class="neck-scroll">
+      <div class="neck" id="neck"></div>
+      <div class="fret-numbers" id="fretNumbers"></div>
+    </div>
+  </section>
+
+  <!-- ===================== chord practice ============================== -->
+  <div class="panels wrap" id="chordPanels">
+    <div>
+      <section class="card">
+        <p class="eyebrow">The chord</p>
+        <h3 id="chordTitle">C major</h3>
+        <p class="sub" id="chordSummary">The first chord anyone plays.</p>
+
+        <div class="roots" id="roots" role="group" aria-label="Root note"></div>
+        <div class="qualities" id="qualities"></div>
+
+        <p class="notes-line" id="chordNotes"></p>
+      </section>
+    </div>
+
+    <div>
+      <section class="card">
+        <div class="row spread">
+          <p class="voicing-name" id="voicingName">Open position</p>
+          <span class="badge" id="voicingLevel" data-level="open">open</span>
+        </div>
+        <p class="voicing-note" id="voicingNote"></p>
+
+        <table class="strings-table" id="voicingStrings">
+          <thead>
+            <tr><th>String</th><th>Fret</th><th>Finger</th><th>Note</th><th>Degree</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+
+        <p class="notes-line" id="voicingOmitted"></p>
+
+        <div class="row spread" style="margin-top:14px">
+          <div class="row tight">
+            <button type="button" class="ghost" id="previousVoicing">Back</button>
+            <button type="button" class="ghost solid" id="anotherVoicing">Try another voicing</button>
+          </div>
+          <span class="counter" id="voicingCount"></span>
+        </div>
+
+        <div class="row tight" style="margin-top:12px">
+          <button type="button" class="ghost" id="hearChord">Hear it</button>
+          <label class="row tight" style="font-size:13px;color:var(--text-soft)">
+            <input type="checkbox" id="simpleOnly"> easy shapes only
+          </label>
+        </div>
+      </section>
+
+      <section class="card">
+        <p class="eyebrow">Or play one yourself</p>
+        <h3>What am I holding?</h3>
+        <p class="sub">Tap a fret to put a finger there, and tap the same one again to let that
+           string go. You start from the shape above, so changing one note and seeing what it
+           becomes takes one tap.</p>
+
+        <div class="reading" id="reading" data-state="">
+          <div class="verdict" id="readingVerdict">Nothing yet</div>
+          <div class="detail" id="readingDetail">Tap somewhere on the neck above.</div>
+          <div class="alternates" id="readingAlternates"></div>
+        </div>
+
+        <div class="row tight" style="margin-top:14px">
+          <button type="button" class="ghost" id="clearShape">Clear</button>
+          <button type="button" class="ghost" id="checkAgainst">Check it against <span id="checkChord">C</span></button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ===================== learning the fretboard ======================= -->
+  <div class="panels wrap" id="fretboardPanels" hidden>
+    <div>
+      <section class="card">
+        <p class="eyebrow">The map</p>
+        <h3>Find your way around</h3>
+        <p class="sub">Before the quiz: turn the names on, or light up every place one note lives.</p>
+
+        <div class="row">
+          <label class="row tight" style="font-size:13px">
+            <input type="checkbox" id="showNames" checked> show every note name
+          </label>
+          <span class="counter" id="namesOff" hidden>off while a quiz is running</span>
+        </div>
+
+        <div class="row" style="margin-top:12px">
+          <span style="font-size:13px;color:var(--text-soft)">Light up</span>
+          <select id="lightNote" aria-label="Light up every"></select>
+          <button type="button" class="ghost" id="clearLit">Clear</button>
+        </div>
+
+        <p class="notes-line" id="litSummary" style="margin-top:12px"></p>
+
+        <p class="sub" style="margin-top:16px">
+          The twelfth fret is the open string again, an octave up. Everything above it repeats
+          what is below it, so the neck is twelve frets long and then a rerun.
+        </p>
+      </section>
+    </div>
+
+    <div>
+      <section class="card">
+        <p class="eyebrow">Quiz</p>
+        <h3 id="quizTitle">Name the note</h3>
+        <p class="sub" id="quizSummary">A dot appears on the neck. Say what it is.</p>
+
+        <div class="row" id="quizSetup">
+          <select id="quizKind" aria-label="Kind of quiz"></select>
+          <select id="quizRange" aria-label="Which frets">
+            <option value="0-5">frets 0-5</option>
+            <option value="0-12" selected>frets 0-12</option>
+            <option value="5-12">frets 5-12</option>
+            <option value="7-15">frets 7-15</option>
+          </select>
+          <select id="quizStrings" aria-label="Which strings">
+            <option value="">all six strings</option>
+            <option value="0">6th string only</option>
+            <option value="1">5th string only</option>
+            <option value="0,1">6th and 5th</option>
+            <option value="3,4,5">the top three</option>
+          </select>
+          <button type="button" class="ghost solid" id="startQuiz">Start</button>
+        </div>
+
+        <div id="quizLive" hidden>
+          <p class="question" id="questionText"></p>
+          <p class="question-detail" id="questionDetail"></p>
+
+          <div class="choices" id="choices"></div>
+          <p class="question-detail" id="tapPrompt" hidden>Answer on the neck above.</p>
+
+          <div class="reading" id="quizReading" data-state="" hidden>
+            <div class="verdict" id="quizVerdict"></div>
+            <div class="detail" id="quizDetail"></div>
+          </div>
+
+          <div class="row spread" style="margin-top:16px">
+            <button type="button" class="ghost solid" id="nextQuestion" hidden>Next</button>
+            <button type="button" class="ghost" id="endQuiz">Finish</button>
+          </div>
+
+          <div class="tally" id="quizTally">
+            <span>asked <b id="tallyAsked">0</b></span>
+            <span>right <b id="tallyRight">0</b></span>
+            <span>run <b id="tallyStreak">0</b></span>
+          </div>
+        </div>
+
+        <div id="quizSummaryPanel" hidden>
+          <p class="question" id="summaryHeadline"></p>
+          <ul class="observations" id="summaryObservations"></ul>
+          <table class="per-string" id="summaryPerString"></table>
+          <div class="row" style="margin-top:16px">
+            <button type="button" class="ghost solid" id="againQuiz">Go again</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <footer class="colophon wrap">
+    <span id="colophonEngine">Starting up.</span>
+    <span id="colophonFraming"></span>
+    <span id="colophonBuild"></span>
+    <span>Engine checked by 120 unit tests.</span>
+  </footer>
+</main>
+
+<dialog id="helpDialog">
+  <h3 id="helpTitle">What am I looking at?</h3>
+  <div id="helpChords">
+    <p>The neck runs left to right, nut on the left. The thickest string - the low E in standard
+       tuning - is the row at the bottom, exactly as it is when you look down at the instrument
+       in your lap.</p>
+    <p>Pick a chord on the left and the first shape appears under your hand. <b>Try another
+       voicing</b> walks along the neck rather than nudging one finger: the second answer is a
+       different place to play the same chord, not the same place with a string muted.</p>
+    <div class="key">
+      <span><i style="background:var(--root)"></i>root</span>
+      <span><i style="background:var(--third)"></i>third</span>
+      <span><i style="background:var(--fifth)"></i>fifth</span>
+      <span><i style="background:var(--charcoal)"></i>everything else</span>
+    </div>
+  </div>
+  <div id="helpFretboard" hidden>
+    <p>Twelve frets and then it repeats: the twelfth fret of any string is the open string an
+       octave up. Nearly all of learning the neck is learning the first twelve on the two
+       thickest strings - barre chords are named after their root, and that root is nearly
+       always on one of those two.</p>
+    <p>The quiz asks about the places you have got wrong more often than the places you have
+       not, so a run gets harder in exactly the way it should.</p>
+  </div>
+  <div class="close-row"><button type="button" class="ghost" id="helpClose">Got it</button></div>
+</dialog>
+
+<script>
+(function () {
+  "use strict";
+
+  /** True when this page is being served, rather than hosted by the app.
+
+      Three things below belong to one and not the other: the webfonts, the
+      offline cache, and reporting an error to a shell that has a console. In
+      the app the shell answers all three, and a page that asked anyway would
+      at best be wrong and at worst hang. */
+  var onTheWeb = !window.__JUCE__ && location.protocol.indexOf("http") === 0;
+
+  if (!window.__JUCE__) {
+    // rel is set with the href, never before: a <link rel="stylesheet"> with no
+    // href counts as a stylesheet still on its way, and a pending stylesheet
+    // stops every script after it from running.
+    var webfonts = document.getElementById("webfonts");
+
+    if (webfonts) {
+      webfonts.href = webfonts.dataset.href;
+      webfonts.rel = "stylesheet";
+    }
+  }
+
+  // Registered after the page is up, never before: the engine is the download
+  // that matters on a first visit and nothing should be competing with it. The
+  // test is isSecureContext rather than https, so a copy served from localhost
+  // - which is where this gets tested - behaves like the deployed one.
+  if (onTheWeb && window.isSecureContext && "serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js").catch(function () {});
+    });
+  }
+
+  // A shipped app has no console, so an error in here would otherwise be
+  // invisible - the interface would just stop responding.
+  if (window.__JUCE__ && window.__JUCE__.backend) {
+    window.addEventListener("error", function (e) {
+      window.__JUCE__.backend.emitEvent("guitar.log",
+        { message: String(e.message), line: String(e.lineno) + ":" + String(e.colno) });
+    });
+    window.addEventListener("unhandledrejection", function (e) {
+      window.__JUCE__.backend.emitEvent("guitar.log",
+        { message: "unhandled: " + String(e.reason), line: "-" });
+    });
+  }
+
+  // --- the engine, whichever one is behind this page ------------------------
+  /* Every engine call in this page goes through call(), and every caller awaits
+     it. The browser answers immediately and the app answers over the bridge;
+     awaiting a plain value costs nothing, so one shape serves both. Keep it
+     that way: an engine call made around this funnel works in the browser and
+     fails silently in the app. */
+
+  var engine = null;
+  var native = null;
+
+  function startNativeBridge() {
+    if (!window.__JUCE__ || !window.__JUCE__.backend) return null;
+
+    var backend = window.__JUCE__.backend;
+    var pending = {};
+    var nextId = 1;
+
+    backend.addEventListener("guitar.engine.reply", function (reply) {
+      var settle = pending[reply.id];
+      if (!settle) return;
+      delete pending[reply.id];
+      settle(reply.json);
+    });
+
+    return {
+      ask: function (name, args) {
+        var id = nextId++;
+        return new Promise(function (resolve) {
+          pending[id] = resolve;
+          backend.emitEvent("guitar.engine.call", { id: id, name: name, args: args });
+        });
+      },
+      on: function (event, handler) { backend.addEventListener(event, handler); }
+    };
+  }
+
+  function readAnswer(json) {
+    try {
+      return JSON.parse(json);
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
+  }
+
+  function call(name, types, args) {
+    if (native !== null) return native.ask(name, args).then(readAnswer);
+
+    if (engine === null) return null;
+
+    try {
+      return JSON.parse(engine.ccall(name, "string", types, args));
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
+  }
+
+  function buildStamp() {
+    var stamp = document.querySelector('meta[name="guitar-build"]');
+    var build = stamp ? stamp.content : "";
+    return build.indexOf("__") === 0 ? "" : build;
+  }
+
+  // --- state ----------------------------------------------------------------
+  var MUTED = -1;
+
+  var state = {
+    mode: "chords",          // "chords" or "fretboard" - a state, never a route
+    tuning: "standard",
+    tunings: [],
+    qualities: [],
+    quizKinds: [],
+    root: "C",
+    quality: "",
+    chord: null,             // the last answer from the engine about this chord
+    shapes: [],
+    shapeIndex: 0,
+    simpleOnly: false,
+    held: [MUTED, MUTED, MUTED, MUTED, MUTED, MUTED],   // what the learner has fretted
+    holding: false,          // true once they have touched the neck themselves
+    showNames: true,
+    lit: "",                 // a note lit up everywhere it lives
+    litPositions: [],
+    fromFret: 0,
+    toFret: 12,
+    board: null,             // the notes of the neck, from the engine
+    quiz: {
+      running: false,
+      question: null,
+      awaiting: false,
+      askedAt: 0,
+      streak: 0,
+      marks: []
+    }
+  };
+
+  var el = {};
+  ["engineStatus", "tuning", "neck", "fretNumbers", "neckTitle", "neckHint",
+   "modeChords", "modeFretboard", "chordPanels", "fretboardPanels",
+   "roots", "qualities", "chordTitle", "chordSummary", "chordNotes",
+   "voicingName", "voicingLevel", "voicingNote", "voicingStrings", "voicingOmitted",
+   "voicingCount", "anotherVoicing", "previousVoicing", "hearChord", "simpleOnly",
+   "reading", "readingVerdict", "readingDetail", "readingAlternates",
+   "clearShape", "checkAgainst", "checkChord",
+   "showNames", "namesOff", "lightNote", "clearLit", "litSummary",
+   "quizKind", "quizRange", "quizStrings", "startQuiz", "quizSetup", "quizLive",
+   "quizTitle", "quizSummary", "questionText", "questionDetail", "choices", "tapPrompt",
+   "quizReading", "quizVerdict", "quizDetail", "nextQuestion", "endQuiz",
+   "tallyAsked", "tallyRight", "tallyStreak",
+   "quizSummaryPanel", "summaryHeadline", "summaryObservations", "summaryPerString", "againQuiz",
+   "helpButton", "helpDialog", "helpClose", "helpTitle", "helpChords", "helpFretboard",
+   "colophonEngine", "colophonFraming", "colophonBuild"].forEach(function (id) {
+    el[id] = document.getElementById(id);
+  });
+
+  var SHARP = "♯";
+  var FLAT = "♭";
+  var NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  var MARKERS = [3, 5, 7, 9, 15, 17, 19, 21];   // 12 is drawn as a double, below
+
+  /** Writes a note or chord name with real sharp and flat glyphs, the way it
+      would be engraved. Chord qualities the engine writes contain no bare 'b'
+      or '#' - m, maj, dim, aug, sus, add - so both characters are accidentals
+      wherever they appear. */
+  function writeNote(target, text) {
+    target.textContent = "";
+
+    for (var i = 0; i < text.length; i++) {
+      var character = text[i];
+
+      if (character === "b" || character === "#") {
+        var accidental = document.createElement("span");
+        accidental.className = "acc";
+        accidental.textContent = character === "#" ? SHARP : FLAT;
+        target.appendChild(accidental);
+      } else {
+        target.appendChild(document.createTextNode(character));
+      }
+    }
+  }
+
+  function prettyNote(text) {
+    return String(text).replace(/#/g, SHARP).replace(/b/g, FLAT);
+  }
+
+  // --- sound ----------------------------------------------------------------
+  /* A plucked string, cheaply: two detuned oscillators through a falling
+     low-pass. It is not a sampled guitar and does not pretend to be - what it
+     has to do is tell you that the chord you are looking at is the chord you
+     think it is, and for that it only has to be in tune. Both shells get it,
+     because a webview has WebAudio exactly like a browser does. */
+  var audio = { context: null };
+
+  function audioContext() {
+    if (audio.context === null) {
+      var Ctor = window.AudioContext || window.webkitAudioContext;
+
+      if (!Ctor) return null;
+
+      audio.context = new Ctor();
+    }
+
+    // Started from a click, always: a context created before one is suspended,
+    // and a suspended context plays nothing and reports no error.
+    if (audio.context.state === "suspended") audio.context.resume();
+
+    return audio.context;
+  }
+
+  function pluck(midiNote, delaySeconds, level) {
+    var context = audioContext();
+
+    if (context === null) return;
+
+    var frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
+    var at = context.currentTime + (delaySeconds || 0);
+
+    var gain = context.createGain();
+    var filter = context.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(frequency * 8, at);
+    filter.frequency.exponentialRampToValueAtTime(Math.max(frequency * 1.6, 180), at + 1.6);
+    filter.Q.value = 0.8;
+
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(level || 0.16, at + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 2.2);
+
+    [0, 1].forEach(function (index) {
+      var osc = context.createOscillator();
+      osc.type = index === 0 ? "triangle" : "sawtooth";
+      osc.frequency.value = frequency * (index === 0 ? 1 : 1.002);
+      osc.connect(filter);
+      osc.start(at);
+      osc.stop(at + 2.3);
+    });
+
+    filter.connect(gain);
+    gain.connect(context.destination);
+  }
+
+  /** Strummed, not played: the strings of a guitar are struck one after another
+      by one hand moving across them, and a chord whose six notes start at the
+      same instant sounds like a keyboard. */
+  function strum(frets) {
+    var delay = 0;
+
+    for (var string = 0; string < frets.length; string++) {
+      if (frets[string] === MUTED) continue;
+
+      var note = noteAt(string, frets[string]);
+
+      if (note < 0) continue;
+
+      pluck(note, delay, 0.14);
+      delay += 0.035;
+    }
+  }
+
+  // --- the neck -------------------------------------------------------------
+  function stringCount() {
+    return state.board ? state.board.strings.length : 6;
+  }
+
+  function noteAt(string, fret) {
+    if (!state.board) return -1;
+
+    var row = state.board.strings[string];
+
+    if (!row) return -1;
+
+    var index = fret - state.board.fromFret;
+    return index >= 0 && index < row.notes.length ? row.notes[index] : -1;
+  }
+
+  function noteName(string, fret) {
+    var note = noteAt(string, fret);
+    return note < 0 ? "" : NOTE_NAMES[((note % 12) + 12) % 12];
+  }
+
+  /** Draws the neck, and only the neck: what goes *on* it is painted separately
+      by whichever mode is running, so switching modes never rebuilds it. */
+  function renderNeck() {
+    var frets = state.toFret;
+    el.neck.style.setProperty("--frets", String(frets));
+    el.fretNumbers.style.setProperty("--frets", String(frets));
+    el.neck.textContent = "";
+
+    // Drawn high string at the top, which is how tab is written and how a
+    // right-handed player sees the instrument in their lap.
+    for (var string = stringCount() - 1; string >= 0; string--) {
+      var row = document.createElement("div");
+      row.className = "neck-row";
+      row.dataset.string = String(string);
+
+      var label = document.createElement("div");
+      label.className = "string-label";
+      label.textContent = (stringCount() - string) + "  " + prettyNote(openNoteName(string));
+      row.appendChild(label);
+
+      for (var fret = 0; fret <= frets; fret++) {
+        var cell = document.createElement("button");
+        cell.type = "button";
+        cell.className = fret === 0 ? "open-cell" : "fret-cell";
+        cell.dataset.string = String(string);
+        cell.dataset.fret = String(fret);
+        cell.setAttribute("aria-label", cellLabel(string, fret));
+
+        // The inlays, on the wood rather than under it: a guitar has them
+        // between the strings, and reading the fifth fret off a dot is how
+        // anyone navigates before they can read the notes.
+        if (fret > 0 && string === 2 && MARKERS.indexOf(fret) !== -1) cell.classList.add("inlaid");
+        if (fret === 12 && (string === 1 || string === 3)) cell.classList.add("inlaid");
+
+        cell.addEventListener("click", makeCellHandler(string, fret));
+        row.appendChild(cell);
+      }
+
+      el.neck.appendChild(row);
+    }
+
+    el.fretNumbers.textContent = "";
+    var spacer = document.createElement("span");
+    spacer.style.gridColumn = "span 2";
+    el.fretNumbers.appendChild(spacer);
+
+    for (var number = 1; number <= frets; number++) {
+      var mark = document.createElement("span");
+      mark.textContent = String(number);
+
+      if (MARKERS.indexOf(number) !== -1 || number === 12) mark.className = "marked";
+
+      el.fretNumbers.appendChild(mark);
+    }
+  }
+
+  function openNoteName(string) {
+    if (!state.board) return "";
+
+    var open = state.board.strings[string].open;   // "E2"
+    return open.replace(/\d+$/, "");
+  }
+
+  function cellLabel(string, fret) {
+    var name = state.board ? state.board.strings[string].name : "string";
+    return name + ", " + (fret === 0 ? "open" : "fret " + fret) + ", " + prettyNote(noteName(string, fret));
+  }
+
+  function cellAt(string, fret) {
+    return el.neck.querySelector('[data-string="' + string + '"][data-fret="' + fret + '"]');
+  }
+
+  function clearNeck() {
+    Array.prototype.forEach.call(el.neck.querySelectorAll(".dot"), function (dot) {
+      dot.remove();
+    });
+
+    Array.prototype.forEach.call(el.neck.querySelectorAll(".barred"), function (cell) {
+      cell.classList.remove("barred");
+    });
+
+    Array.prototype.forEach.call(el.neck.querySelectorAll(".neck-row"), function (row) {
+      row.classList.remove("barre-top", "barre-bottom");
+    });
+  }
+
+  function mark(string, fret, text, options) {
+    var cell = cellAt(string, fret);
+
+    if (!cell) return null;
+
+    var dot = document.createElement("span");
+    dot.className = "dot" + (options && options.className ? " " + options.className : "");
+    writeNote(dot, text || "");
+
+    if (options && options.degree) dot.dataset.degree = options.degree;
+
+    cell.appendChild(dot);
+    return dot;
+  }
+
+  // --- what goes on the neck ------------------------------------------------
+  /** One painter, not two: the neck is the same component in both modes and
+      what is drawn on it is a branch, never a second implementation. */
+  function paintNeck() {
+    clearNeck();
+
+    if (state.mode === "chords") {
+      if (state.holding) {
+        paintHeldShape();
+      } else {
+        paintShape(state.shapes[state.shapeIndex]);
+      }
+    } else {
+      paintFretboardMode();
+    }
+  }
+
+  function paintShape(shape) {
+    if (!shape) return;
+
+    if (shape.barreFret > 0) paintBarre(shape);
+
+    for (var string = 0; string < shape.frets.length; string++) {
+      var fret = shape.frets[string];
+
+      if (fret === MUTED) {
+        mark(string, 0, "×", { className: "muted-mark" });
+        continue;
+      }
+
+      var degree = shape.degrees[string] || "";
+      var label = degree || prettyNote(shape.noteNames[string] || "");
+
+      mark(string, fret, label, {
+        degree: degree,
+        className: fret === 0 ? "open-mark" : ""
+      });
+    }
+  }
+
+  /** The bar under the fingers, before the fingers go on top of it. */
+  function paintBarre(shape) {
+    for (var string = shape.barreFrom; string <= shape.barreTo; string++) {
+      var cell = cellAt(string, shape.barreFret);
+
+      if (!cell) continue;
+
+      cell.classList.add("barred");
+
+      if (string === shape.barreFrom) cell.parentElement.classList.add("barre-bottom");
+      if (string === shape.barreTo) cell.parentElement.classList.add("barre-top");
+    }
+  }
+
+  function paintHeldShape() {
+    for (var string = 0; string < state.held.length; string++) {
+      var fret = state.held[string];
+
+      if (fret === MUTED) {
+        mark(string, 0, "×", { className: "muted-mark" });
+        continue;
+      }
+
+      mark(string, fret, prettyNote(noteName(string, fret)), {
+        className: fret === 0 ? "open-mark" : ""
+      });
+    }
+  }
+
+  function paintFretboardMode() {
+    var quiz = state.quiz;
+
+    // A quiz in progress owns the neck: names everywhere would answer half the
+    // questions it is about to ask.
+    if (quiz.running && quiz.question) {
+      (quiz.question.highlight || []).forEach(function (position) {
+        mark(position.string, position.fret, "?", { className: "asked" });
+      });
+
+      quiz.marks.forEach(function (entry) {
+        mark(entry.string, entry.fret, entry.text, { className: entry.className });
+      });
+
+      return;
+    }
+
+    if (state.showNames) {
+      for (var string = 0; string < stringCount(); string++) {
+        for (var fret = 0; fret <= state.toFret; fret++) {
+          var lit = state.litPositions.some(function (position) {
+            return position.string === string && position.fret === fret;
+          });
+
+          if (!lit && !state.showNames) continue;
+
+          mark(string, fret, prettyNote(noteName(string, fret)), {
+            className: lit ? "lit" : "ghosted"
+          });
+        }
+      }
+
+      return;
+    }
+
+    state.litPositions.forEach(function (position) {
+      mark(position.string, position.fret,
+           prettyNote(noteName(position.string, position.fret)), { className: "lit" });
+    });
+  }
+
+  // --- tapping the neck -----------------------------------------------------
+  function makeCellHandler(string, fret) {
+    return function () {
+      if (state.mode === "fretboard") {
+        tapInFretboardMode(string, fret);
+      } else {
+        tapInChordMode(string, fret);
+      }
+    };
+  }
+
+  async function tapInChordMode(string, fret) {
+    // The first touch takes the neck away from the suggested shape and gives it
+    // to the player. Clear hands it back, which is why that button exists.
+    if (!state.holding) {
+      state.holding = true;
+      state.held = state.shapes.length
+        ? state.shapes[state.shapeIndex].frets.slice()
+        : [MUTED, MUTED, MUTED, MUTED, MUTED, MUTED];
+    }
+
+    // Tapping where a finger already is lets that string go, so a shape can be
+    // taken apart with the same gesture it was built with.
+    state.held[string] = state.held[string] === fret ? MUTED : fret;
+
+    if (state.held[string] !== MUTED) pluck(noteAt(string, fret), 0, 0.18);
+
+    paintNeck();
+    await readHeldShape();
+  }
+
+  function tapInFretboardMode(string, fret) {
+    var quiz = state.quiz;
+
+    if (quiz.running && quiz.awaiting && quiz.question
+        && quiz.question.answerKind === "position") {
+      answerQuiz(string + "," + fret);
+      return;
+    }
+
+    pluck(noteAt(string, fret), 0, 0.18);
+    lightUp(noteName(string, fret));
+  }
+
+  // --- chord practice -------------------------------------------------------
+  function chordSymbol() {
+    return state.root + state.quality;
+  }
+
+  async function loadShapes() {
+    var answer = await call("guitarChordShapes",
+      ["string", "string", "number", "number", "number", "number"],
+      [chordSymbol(), state.tuning, 0, 12, 8, state.simpleOnly ? 1 : 0]);
+
+    if (!answer || !answer.ok) {
+      el.voicingName.textContent = "No shape for that";
+      el.voicingNote.textContent = answer && answer.error ? answer.error : "The engine said nothing.";
+      state.shapes = [];
+      clearNeck();
+      return;
+    }
+
+    state.chord = answer;
+    state.shapes = answer.shapes;
+    state.shapeIndex = 0;
+    state.holding = false;
+
+    writeNote(el.chordTitle, answer.symbol + " — " + answer.quality);
+    el.chordSummary.textContent = answer.summary;
+    writeNote(el.checkChord, answer.symbol);
+
+    el.chordNotes.textContent = "";
+    var label = document.createElement("b");
+    label.textContent = "The notes: ";
+    el.chordNotes.appendChild(label);
+    var notes = document.createElement("span");
+    writeNote(notes, answer.notes.join(", "));
+    el.chordNotes.appendChild(notes);
+
+    showShape();
+    resetReading();
+  }
+
+  function showShape() {
+    var shape = state.shapes[state.shapeIndex];
+
+    el.anotherVoicing.disabled = state.shapes.length < 2;
+    el.previousVoicing.disabled = state.shapes.length < 2;
+
+    if (!shape) {
+      el.voicingName.textContent = "Nothing playable here";
+      el.voicingNote.textContent = "Not on six strings and four fingers, anyway. Try another chord, "
+                                + "or turn off “easy shapes only”.";
+      el.voicingStrings.querySelector("tbody").textContent = "";
+      el.voicingOmitted.textContent = "";
+      el.voicingCount.textContent = "";
+      clearNeck();
+      return;
+    }
+
+    el.voicingName.textContent = shape.name;
+    el.voicingLevel.textContent = shape.difficulty;
+    el.voicingLevel.dataset.level = shape.difficulty;
+    el.voicingNote.textContent = shape.note;
+    el.voicingCount.textContent = (state.shapeIndex + 1) + " of " + state.shapes.length;
+
+    var body = el.voicingStrings.querySelector("tbody");
+    body.textContent = "";
+
+    // Top string first, to read in the same order as the diagram above it.
+    for (var string = shape.frets.length - 1; string >= 0; string--) {
+      var fret = shape.frets[string];
+      var row = document.createElement("tr");
+
+      if (fret === MUTED) row.className = "muted";
+
+      var cells = [
+        (shape.frets.length - string) + (string === 0 ? "th (low)" : ""),
+        fret === MUTED ? "muted" : (fret === 0 ? "open" : String(fret)),
+        fret === MUTED ? "—" : (fret === 0 ? "—" : String(shape.fingers[string])),
+        fret === MUTED ? "—" : shape.noteNames[string],
+        fret === MUTED ? "—" : (shape.degrees[string] || "")
+      ];
+
+      cells.forEach(function (text, index) {
+        var cell = document.createElement("td");
+
+        if (index === 4) {
+          cell.className = "deg";
+          cell.dataset.degree = text;
+        }
+
+        writeNote(cell, text);
+        row.appendChild(cell);
+      });
+
+      body.appendChild(row);
+    }
+
+    el.voicingOmitted.textContent = "";
+
+    if (shape.omitted.length) {
+      var omitted = document.createElement("span");
+      omitted.textContent = "Left out: ";
+      el.voicingOmitted.appendChild(omitted);
+      var which = document.createElement("b");
+      writeNote(which, shape.omitted.join(", "));
+      el.voicingOmitted.appendChild(which);
+      el.voicingOmitted.appendChild(document.createTextNode(
+        shape.omitted.length === 1 && shape.omitted[0] === "5"
+          ? ". The fifth says nothing about which chord this is, so it is the first to go."
+          : ". Six strings and four fingers is the whole reason."));
+    } else {
+      el.voicingOmitted.textContent = "Every note of the chord is in this shape.";
+    }
+
+    state.holding = false;
+    paintNeck();
+  }
+
+  function stepShape(by) {
+    if (!state.shapes.length) return;
+
+    // Wraps, because the list is a loop around the neck and stopping at the end
+    // of it would only mean pressing Back eight times.
+    state.shapeIndex = (state.shapeIndex + by + state.shapes.length) % state.shapes.length;
+    showShape();
+    resetReading();
+  }
+
+  function resetReading() {
+    el.reading.dataset.state = "";
+    el.readingVerdict.textContent = "Nothing yet";
+    el.readingDetail.textContent = "Tap somewhere on the neck above.";
+    el.readingAlternates.textContent = "";
+  }
+
+  function heldCsv() {
+    return state.held.map(function (fret) {
+      return fret === MUTED ? "x" : String(fret);
+    }).join(",");
+  }
+
+  async function readHeldShape() {
+    var answer = await call("guitarIdentifyShape", ["string", "string"], [state.tuning, heldCsv()]);
+
+    if (!answer || !answer.ok) return;
+
+    el.reading.dataset.state = answer.namings.length ? "right" : "";
+    el.readingVerdict.textContent = "";
+
+    if (answer.namings.length) {
+      writeNote(el.readingVerdict, answer.namings[0].symbol);
+    } else {
+      el.readingVerdict.textContent = answer.playing ? "No name for that" : "Nothing yet";
+    }
+
+    el.readingDetail.textContent = "";
+    writeNote(el.readingDetail, answer.summary);
+
+    el.readingAlternates.textContent = "";
+
+    if (answer.noteNames.length) {
+      var sounding = document.createElement("span");
+      writeNote(sounding, "Sounding: " + answer.noteNames.filter(Boolean).join(" · "));
+      el.readingAlternates.appendChild(sounding);
+    }
+  }
+
+  async function checkHeldAgainstChord() {
+    if (!state.holding) {
+      resetReading();
+      el.readingDetail.textContent = "Build a shape on the neck first - then this says whether it is "
+                                   + "the chord above.";
+      return;
+    }
+
+    var answer = await call("guitarCheckShape", ["string", "string", "string"],
+      [chordSymbol(), state.tuning, heldCsv()]);
+
+    if (!answer || !answer.ok) return;
+
+    el.reading.dataset.state = answer.correct ? "right" : "wrong";
+    el.readingVerdict.textContent = answer.verdict;
+    el.readingDetail.textContent = "";
+    writeNote(el.readingDetail, answer.detail);
+    el.readingAlternates.textContent = "";
+  }
+
+  // --- learning the neck ----------------------------------------------------
+  async function lightUp(noteName) {
+    if (!noteName) return;
+
+    state.lit = noteName;
+    el.lightNote.value = noteName;
+
+    var answer = await call("guitarPositionsFor", ["string", "string", "number", "number"],
+      [noteName, state.tuning, 0, state.toFret]);
+
+    if (!answer || !answer.ok) return;
+
+    state.litPositions = answer.positions;
+    el.litSummary.textContent = "";
+
+    var lead = document.createElement("b");
+    writeNote(lead, answer.note);
+    el.litSummary.appendChild(lead);
+    el.litSummary.appendChild(document.createTextNode(
+      " is in " + answer.positions.length + " places in the first " + state.toFret
+      + " frets. They are the same note in different octaves - learn the shape they make and you "
+      + "have learnt the note."));
+
+    paintNeck();
+  }
+
+  function clearLit() {
+    state.lit = "";
+    state.litPositions = [];
+    el.lightNote.value = "";
+    el.litSummary.textContent = "";
+    paintNeck();
+  }
+
+  // --- the quiz -------------------------------------------------------------
+  function quizRange() {
+    var parts = el.quizRange.value.split("-");
+    return { from: Number(parts[0]), to: Number(parts[1]) };
+  }
+
+  async function startQuiz() {
+    var range = quizRange();
+
+    // The seed comes from the shell, because the engine has no clock and is not
+    // getting one. Two people given the same number get the same quiz.
+    var seed = (Date.now() % 100000) + 1;
+
+    var question = await call("guitarQuizStart",
+      ["string", "string", "number", "number", "string", "string", "number"],
+      [el.quizKind.value, state.tuning, range.from, range.to, el.quizStrings.value, "", seed]);
+
+    if (!question || !question.ok) {
+      el.quizSetup.hidden = false;
+      el.quizLive.hidden = true;
+      el.quizTitle.textContent = "That quiz cannot be set";
+      el.quizSummary.textContent = question && question.error ? question.error : "The engine said nothing.";
+      return;
+    }
+
+    state.quiz.running = true;
+    state.quiz.streak = 0;
+
+    // The neck answers half the questions while the names are on it, so the
+    // quiz takes it over - and says so, rather than leaving a ticked box that
+    // is plainly not in force.
+    el.showNames.disabled = true;
+    el.namesOff.hidden = false;
+    el.quizSetup.hidden = true;
+    el.quizSummaryPanel.hidden = true;
+    el.quizLive.hidden = false;
+    el.tallyAsked.textContent = "0";
+    el.tallyRight.textContent = "0";
+    el.tallyStreak.textContent = "0";
+
+    showQuestion(question);
+  }
+
+  function showQuestion(question) {
+    state.quiz.question = question;
+    state.quiz.awaiting = true;
+    state.quiz.marks = [];
+    state.quiz.askedAt = Date.now();
+
+    el.questionText.textContent = "";
+    writeNote(el.questionText, question.prompt);
+    el.questionDetail.textContent = question.detail;
+
+    el.quizReading.hidden = true;
+    el.nextQuestion.hidden = true;
+
+    el.choices.textContent = "";
+    el.choices.hidden = question.answerKind === "position";
+    el.tapPrompt.hidden = question.answerKind !== "position";
+
+    (question.choices || []).forEach(function (choice) {
+      var button = document.createElement("button");
+      button.type = "button";
+      writeNote(button, choice);
+      button.addEventListener("click", function () { answerQuiz(choice, button); });
+      el.choices.appendChild(button);
+    });
+
+    paintNeck();
+  }
+
+  async function answerQuiz(given, button) {
+    if (!state.quiz.awaiting) return;
+
+    state.quiz.awaiting = false;
+
+    // How long it took is the shell's to know and the engine's to report. It
+    // never asks what time it is; it is told, like it is told the seed.
+    var elapsed = Math.max(0, Date.now() - state.quiz.askedAt);
+
+    var verdict = await call("guitarQuizAnswer", ["string", "number"], [given, elapsed]);
+
+    if (!verdict || !verdict.ok) return;
+
+    state.quiz.streak = verdict.correct ? state.quiz.streak + 1 : 0;
+
+    el.tallyAsked.textContent = String(verdict.asked);
+    el.tallyRight.textContent = String(verdict.right);
+    el.tallyStreak.textContent = String(state.quiz.streak);
+
+    el.quizReading.hidden = false;
+    el.quizReading.dataset.state = verdict.correct ? "right" : "wrong";
+    el.quizVerdict.textContent = verdict.verdict;
+    el.quizDetail.textContent = "";
+    writeNote(el.quizDetail, verdict.detail);
+    el.nextQuestion.hidden = false;
+
+    if (button) {
+      Array.prototype.forEach.call(el.choices.children, function (other) { other.disabled = true; });
+      button.classList.add(verdict.correct ? "right" : "wrong");
+    }
+
+    // Every place that would have been right, marked - because on a fretboard
+    // there is nearly always more than one, and the second one is the lesson.
+    state.quiz.marks = (verdict.positions || []).map(function (position) {
+      return {
+        string: position.string,
+        fret: position.fret,
+        text: prettyNote(noteName(position.string, position.fret)),
+        className: "answer"
+      };
+    });
+
+    if (verdict.positions && verdict.positions.length) {
+      var first = verdict.positions[0];
+      pluck(noteAt(first.string, first.fret), 0, 0.18);
+    }
+
+    paintNeck();
+  }
+
+  async function nextQuestion() {
+    var question = await call("guitarQuizNext", [], []);
+
+    if (question && question.ok) showQuestion(question);
+  }
+
+  async function endQuiz() {
+    var summary = await call("guitarQuizEnd", [], []);
+
+    state.quiz.running = false;
+    state.quiz.question = null;
+    state.quiz.awaiting = false;
+    state.quiz.marks = [];
+
+    el.quizLive.hidden = true;
+    el.quizSetup.hidden = false;
+    el.showNames.disabled = false;
+    el.namesOff.hidden = true;
+
+    if (!summary || !summary.ok) {
+      paintNeck();
+      return;
+    }
+
+    el.quizSummaryPanel.hidden = false;
+    el.summaryHeadline.textContent = summary.headline;
+
+    el.summaryObservations.textContent = "";
+    summary.observations.forEach(function (observation) {
+      var item = document.createElement("li");
+      writeNote(item, observation);
+      el.summaryObservations.appendChild(item);
+    });
+
+    el.summaryPerString.textContent = "";
+    summary.perString.forEach(function (tally) {
+      var row = document.createElement("tr");
+      var name = document.createElement("td");
+      writeNote(name, tally.name);
+      var score = document.createElement("td");
+      score.textContent = tally.right + "/" + tally.asked;
+      var barCell = document.createElement("td");
+      var bar = document.createElement("div");
+      bar.className = "bar";
+      var fill = document.createElement("span");
+      fill.style.width = (tally.asked ? Math.round(tally.right * 100 / tally.asked) : 0) + "%";
+      bar.appendChild(fill);
+      barCell.appendChild(bar);
+      row.appendChild(name);
+      row.appendChild(score);
+      row.appendChild(barCell);
+      el.summaryPerString.appendChild(row);
+    });
+
+    paintNeck();
+  }
+
+  // --- the two modes --------------------------------------------------------
+  function applyMode() {
+    document.body.dataset.mode = state.mode;
+    var chords = state.mode === "chords";
+
+    el.modeChords.setAttribute("aria-pressed", chords ? "true" : "false");
+    el.modeFretboard.setAttribute("aria-pressed", chords ? "false" : "true");
+    el.chordPanels.hidden = !chords;
+    el.fretboardPanels.hidden = chords;
+
+    // The two ledes are stacked in one grid cell, so they are swapped by
+    // visibility: hiding one outright would let the whole page jump by a line.
+    Array.prototype.forEach.call(document.querySelectorAll(".mode-stack > *"), function (half) {
+      half.style.visibility = half.dataset.for === state.mode ? "visible" : "hidden";
+    });
+
+    document.title = chords ? "Guitar Learning App - chords" : "Guitar Learning App - the fretboard";
+    el.neckTitle.textContent = chords ? "The shape under your hand" : "The neck";
+    el.neckHint.textContent = chords
+      ? "Tap the neck to build a shape of your own."
+      : (state.quiz.running ? "Answer on the neck, where the question is." : "Tap a fret to hear it and light up every other place that note lives.");
+
+    el.helpTitle.textContent = chords ? "What am I looking at?" : "Learning the neck";
+    el.helpChords.hidden = !chords;
+    el.helpFretboard.hidden = chords;
+
+    paintNeck();
+  }
+
+  // --- building the menus the engine owns -----------------------------------
+  async function loadCatalogues() {
+    var tunings = await call("guitarTunings", [], []);
+
+    if (tunings && tunings.ok) {
+      state.tunings = tunings.tunings;
+      el.tuning.textContent = "";
+
+      tunings.tunings.forEach(function (tuning) {
+        var option = document.createElement("option");
+        option.value = tuning.key;
+        option.textContent = tuning.name + " · " + prettyNote(tuning.spelling);
+        option.title = tuning.summary;
+        el.tuning.appendChild(option);
+      });
+
+      el.tuning.value = state.tuning;
+    }
+
+    var qualities = await call("guitarChordQualities", [], []);
+
+    if (qualities && qualities.ok) {
+      state.qualities = qualities.qualities;
+      el.qualities.textContent = "";
+
+      var families = [];
+
+      qualities.qualities.forEach(function (quality) {
+        if (families.indexOf(quality.family) === -1) families.push(quality.family);
+      });
+
+      families.forEach(function (family) {
+        var group = document.createElement("div");
+        group.className = "quality-family";
+        var name = document.createElement("span");
+        name.textContent = family;
+        group.appendChild(name);
+
+        var row = document.createElement("div");
+        row.className = "row";
+
+        qualities.qualities.filter(function (quality) { return quality.family === family; })
+          .forEach(function (quality) {
+            var button = document.createElement("button");
+            button.type = "button";
+            writeNote(button, quality.suffix === "" ? "major" : quality.suffix);
+            button.title = quality.summary;
+            button.dataset.suffix = quality.suffix;
+            button.setAttribute("aria-pressed", quality.suffix === state.quality ? "true" : "false");
+            button.addEventListener("click", function () {
+              state.quality = quality.suffix;
+              markPressed(el.qualities, "suffix", quality.suffix);
+              loadShapes();
+            });
+            row.appendChild(button);
+          });
+
+        group.appendChild(row);
+        el.qualities.appendChild(group);
+      });
+    }
+
+    var kinds = await call("guitarQuizKinds", [], []);
+
+    if (kinds && kinds.ok) {
+      state.quizKinds = kinds.kinds;
+      el.quizKind.textContent = "";
+
+      kinds.kinds.forEach(function (kind) {
+        var option = document.createElement("option");
+        option.value = kind.key;
+        option.textContent = kind.name;
+        option.title = kind.summary;
+        el.quizKind.appendChild(option);
+      });
+
+      describeQuiz();
+    }
+
+    // The roots are the twelve notes, which is the one list the engine does not
+    // have to be asked for - but it is still drawn from the same names the
+    // engine spells with, so nothing here invents a spelling of its own.
+    el.roots.textContent = "";
+    NOTE_NAMES.forEach(function (note) {
+      var button = document.createElement("button");
+      button.type = "button";
+      writeNote(button, note);
+      button.dataset.note = note;
+      button.setAttribute("aria-pressed", note === state.root ? "true" : "false");
+      button.addEventListener("click", function () {
+        state.root = note;
+        markPressed(el.roots, "note", note);
+        loadShapes();
+      });
+      el.roots.appendChild(button);
+    });
+
+    el.lightNote.textContent = "";
+    var none = document.createElement("option");
+    none.value = "";
+    none.textContent = "a note…";
+    el.lightNote.appendChild(none);
+
+    NOTE_NAMES.forEach(function (note) {
+      var option = document.createElement("option");
+      option.value = note;
+      option.textContent = prettyNote(note);
+      el.lightNote.appendChild(option);
+    });
+  }
+
+  function markPressed(container, key, value) {
+    Array.prototype.forEach.call(container.querySelectorAll("button"), function (button) {
+      button.setAttribute("aria-pressed", button.dataset[key] === value ? "true" : "false");
+    });
+  }
+
+  function describeQuiz() {
+    var chosen = state.quizKinds.filter(function (kind) { return kind.key === el.quizKind.value; })[0];
+
+    if (!chosen) return;
+
+    el.quizTitle.textContent = chosen.name;
+    el.quizSummary.textContent = chosen.summary;
+  }
+
+  async function loadBoard() {
+    var answer = await call("guitarFretboardNotes", ["string", "number", "number"],
+      [state.tuning, 0, state.toFret]);
+
+    if (!answer || !answer.ok) return;
+
+    state.board = answer;
+    renderNeck();
+  }
+
+  // --- wiring ---------------------------------------------------------------
+  el.modeChords.addEventListener("click", function () { state.mode = "chords"; applyMode(); });
+  el.modeFretboard.addEventListener("click", function () { state.mode = "fretboard"; applyMode(); });
+
+  el.tuning.addEventListener("change", async function () {
+    state.tuning = el.tuning.value;
+    await loadBoard();
+    await loadShapes();
+
+    if (state.lit) lightUp(state.lit);
+  });
+
+  el.anotherVoicing.addEventListener("click", function () { stepShape(1); });
+  el.previousVoicing.addEventListener("click", function () { stepShape(-1); });
+  el.hearChord.addEventListener("click", function () {
+    var frets = state.holding ? state.held
+                              : (state.shapes[state.shapeIndex] ? state.shapes[state.shapeIndex].frets : null);
+    if (frets) strum(frets);
+  });
+  el.simpleOnly.addEventListener("change", function () {
+    state.simpleOnly = el.simpleOnly.checked;
+    loadShapes();
+  });
+
+  el.clearShape.addEventListener("click", function () {
+    state.holding = false;
+    state.held = [MUTED, MUTED, MUTED, MUTED, MUTED, MUTED];
+    resetReading();
+    paintNeck();
+  });
+  el.checkAgainst.addEventListener("click", checkHeldAgainstChord);
+
+  el.showNames.addEventListener("change", function () {
+    state.showNames = el.showNames.checked;
+    paintNeck();
+  });
+  el.lightNote.addEventListener("change", function () {
+    if (el.lightNote.value) lightUp(el.lightNote.value); else clearLit();
+  });
+  el.clearLit.addEventListener("click", clearLit);
+
+  el.quizKind.addEventListener("change", describeQuiz);
+  el.startQuiz.addEventListener("click", startQuiz);
+  el.againQuiz.addEventListener("click", startQuiz);
+  el.nextQuestion.addEventListener("click", nextQuestion);
+  el.endQuiz.addEventListener("click", endQuiz);
+
+  el.helpButton.addEventListener("click", function () { el.helpDialog.showModal(); });
+  el.helpClose.addEventListener("click", function () { el.helpDialog.close(); });
+
+  // --- starting up ----------------------------------------------------------
+  async function startEngine() {
+    native = startNativeBridge();
+
+    if (native !== null) {
+      document.body.classList.add("in-app");
+      return "native";
+    }
+
+    /* Loaded here rather than as a tag in the document, so the app never asks
+       for it: in the app the engine is native, and a webview that requests a
+       sub-resource while the page itself is still arriving can stall.
+
+       Tagged with this page's build, so the two can never be a deploy apart. A
+       page asking for a function the engine beside it does not have yet gets a
+       thrown call, an answer of ok:false, and a menu that is simply empty -
+       with the engine chip still saying ready. */
+    var stamp = buildStamp();
+
+    await new Promise(function (resolve, reject) {
+      var script = document.createElement("script");
+      script.src = "guitar-engine.js" + (stamp ? "?v=" + encodeURIComponent(stamp) : "");
+      script.onload = resolve;
+      script.onerror = function () { reject(new Error("could not load guitar-engine.js")); };
+      document.head.appendChild(script);
+    });
+
+    engine = await createGuitarEngine();
+    return "WebAssembly";
+  }
+
+  /** Says which of the two engines just answered, and what this page is.
+
+      Both matter to a visitor who has arrived cold: this is one interface with
+      two ways of reaching one engine, and which one is behind it is not
+      otherwise visible from the page. */
+  function writeColophon(kind) {
+    var build = buildStamp();
+    el.colophonBuild.textContent = build ? "Build: " + build + "." : "Build: development.";
+
+    if (kind === "native") {
+      el.colophonEngine.textContent = "Running natively, in the desktop app.";
+      el.colophonFraming.textContent = "The same page is the website.";
+      return;
+    }
+
+    el.colophonEngine.innerHTML = "Compiled to WebAssembly with <code>em++ -O2</code>.";
+    el.colophonFraming.textContent = "The same page is the desktop app's interface, against the "
+                                   + "native build of the same engine.";
+  }
+
+  startEngine().then(async function (kind) {
+    el.engineStatus.dataset.state = "ready";
+    el.engineStatus.textContent = "engine ready";
+    writeColophon(kind);
+
+    await loadBoard();
+    await loadCatalogues();
+    await loadShapes();
+
+    applyMode();
+    return kind;
+  }).catch(function (error) {
+    el.engineStatus.dataset.state = "failed";
+    el.engineStatus.textContent = "engine failed";
+    el.neckHint.textContent = "The engine did not start: " + error;
+  });
+
+})();
+</script>
+</body>
+</html>
