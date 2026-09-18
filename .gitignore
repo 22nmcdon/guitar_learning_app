@@ -1,0 +1,5 @@
+build/
+build-*/
+web/dist/
+web/guitar-engine.js
+.DS_Store
