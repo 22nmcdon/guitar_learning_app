@@ -73,6 +73,8 @@ The app opens on the neck, with a C major under your hand. The desktop app and
 the browser page are not merely alike: they are the same page, and which of the
 two engines is behind it is written in the colophon at the foot.
 
+![The desktop app: the same page in a webview, against the native build of the engine](docs/screenshot-app.png)
+
 **Chords** and **Fretboard**, at the top, are the two things you can practise.
 They are modes over one neck, not two screens - the tuning, the diagram and the
 engine stay exactly where they were.
