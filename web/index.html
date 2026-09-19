@@ -439,6 +439,54 @@ select, .field {
   pointer-events: none;
 }
 
+/* --- a left-handed neck --------------------------------------------------- */
+/* The same DOM in the other order: the cells are appended reversed and the grid
+   is told the columns run the other way, so the nut is on the right and the
+   frets count leftwards. Nothing is mirrored with a transform, because a
+   mirrored transform mirrors the note names inside it too. */
+body[data-hand="left"] .neck,
+body[data-hand="left"] .fret-numbers {
+  grid-template-columns: repeat(var(--frets), var(--fret-width)) 46px 54px;
+}
+body[data-hand="left"] .fret-cell {
+  border-right: 0;
+  border-left: 2px solid rgba(207, 198, 186, 0.55);
+}
+body[data-hand="left"] .open-cell {
+  border-right: 0;
+  border-left: 5px solid var(--bone);
+}
+body[data-hand="left"] .string-label {
+  justify-content: flex-start;
+  padding-right: 0;
+  padding-left: 10px;
+}
+
+/* --- what a learner knows -------------------------------------------------- */
+/* Four buckets rather than a continuous ramp: this is a thing to read at a
+   glance across 78 frets, and nobody reads the difference between 71% and 76%. */
+.dot[data-known] { color: var(--paper); box-shadow: 0 1px 3px rgba(0,0,0,0.35); }
+.dot[data-known="shaky"] { background: var(--outside); }
+.dot[data-known="mixed"] { background: var(--gold); }
+.dot[data-known="solid"] { background: var(--third); }
+.dot[data-known="sure"]  { background: #41684a; }
+
+.known-key { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--text-soft); }
+.known-key i {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+
+.weak-list { margin: 8px 0 0; padding-left: 18px; font-size: 13.5px; color: var(--text-soft); }
+.weak-list li { margin-bottom: 3px; }
+
+.danger { color: var(--outside); border-color: var(--line); }
+.danger:hover { border-color: var(--outside); color: var(--outside); }
+
 /* --- panels --------------------------------------------------------------- */
 .panels {
   display: grid;
@@ -713,7 +761,7 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
     <div data-for="chords">
       <h1>Chords on the <em>fretboard</em></h1>
       <p class="lede">Pick a chord and see where it sits under your hand - then ask for another
-         way of playing it, and another, until the neck stops being six separate strings.</p>
+         way of playing it, and another, until the neck stops being a row of separate strings.</p>
     </div>
     <div data-for="fretboard">
       <h1>Learn the <em>fretboard</em></h1>
@@ -728,6 +776,10 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
       <button type="button" id="modeFretboard" aria-pressed="false">Fretboard</button>
     </div>
     <select id="tuning" aria-label="Tuning"></select>
+    <select id="hand" aria-label="Which way round you play">
+      <option value="right">Right-handed</option>
+      <option value="left">Left-handed</option>
+    </select>
     <button type="button" class="ghost" id="helpButton" aria-label="What am I looking at">?</button>
     <span class="status" id="engineStatus" data-state="loading">starting the engine</span>
   </div>
@@ -830,6 +882,21 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
           <span class="counter" id="namesOff" hidden>off while a quiz is running</span>
         </div>
 
+        <div class="row" style="margin-top:8px">
+          <label class="row tight" style="font-size:13px">
+            <input type="checkbox" id="showKnown"> show what you know
+          </label>
+        </div>
+
+        <div id="knownPanel" hidden style="margin-top:8px">
+          <div class="known-key">
+            <span><i style="background:#41684a"></i>sure</span>
+            <span><i style="background:var(--third)"></i>solid</span>
+            <span><i style="background:var(--gold)"></i>mixed</span>
+            <span><i style="background:var(--outside)"></i>shaky</span>
+          </div>
+        </div>
+
         <div class="row" style="margin-top:12px">
           <span style="font-size:13px;color:var(--text-soft)">Light up</span>
           <select id="lightNote" aria-label="Light up every"></select>
@@ -842,6 +909,16 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
           The twelfth fret is the open string again, an octave up. Everything above it repeats
           what is below it, so the neck is twelve frets long and then a rerun.
         </p>
+
+        <div style="border-top:1px solid var(--line); margin-top:16px; padding-top:14px">
+          <p class="eyebrow">Your record</p>
+          <p class="notes-line" id="progressLine">Nothing yet. Take a quiz and this remembers it.</p>
+          <ul class="weak-list" id="weakList"></ul>
+          <div class="row" style="margin-top:10px">
+            <button type="button" class="ghost danger" id="forgetProgress">Forget my progress</button>
+          </div>
+          <p class="counter" id="progressWhere" style="margin-top:8px"></p>
+        </div>
       </section>
     </div>
 
@@ -895,7 +972,9 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
 
         <div id="quizSummaryPanel" hidden>
           <p class="question" id="summaryHeadline"></p>
+          <p class="notes-line" id="summaryLifetime"></p>
           <ul class="observations" id="summaryObservations"></ul>
+          <ul class="weak-list" id="summaryWeak"></ul>
           <table class="per-string" id="summaryPerString"></table>
           <div class="row" style="margin-top:16px">
             <button type="button" class="ghost solid" id="againQuiz">Go again</button>
@@ -909,7 +988,7 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
     <span id="colophonEngine">Starting up.</span>
     <span id="colophonFraming"></span>
     <span id="colophonBuild"></span>
-    <span>Engine checked by 120 unit tests.</span>
+    <span>Engine checked by 148 unit tests.</span>
   </footer>
 </main>
 
@@ -935,7 +1014,12 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
        thickest strings - barre chords are named after their root, and that root is nearly
        always on one of those two.</p>
     <p>The quiz asks about the places you have got wrong more often than the places you have
-       not, so a run gets harder in exactly the way it should.</p>
+       not, so a run gets harder in exactly the way it should - and it remembers between
+       visits, so a fret you missed last week comes back this week. <b>Show what you know</b>
+       paints the neck with that record: green where you have been right and it is recent, red
+       where you have not.</p>
+    <p>The record lives in this browser and goes no further. Clearing your site data clears it,
+       and so does the button under the map.</p>
   </div>
   <div class="close-row"><button type="button" class="ghost" id="helpClose">Got it</button></div>
 </dialog>
@@ -1055,15 +1139,18 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
   var state = {
     mode: "chords",          // "chords" or "fretboard" - a state, never a route
     tuning: "standard",
+    hand: "right",           // which way round the neck is drawn; nothing else changes
     quizKinds: [],
     root: "C",
     quality: "",
     shapes: [],
     shapeIndex: 0,
     simpleOnly: false,
-    held: [MUTED, MUTED, MUTED, MUTED, MUTED, MUTED],   // what the learner has fretted
+    held: [],                // what the learner has fretted; as long as the tuning has strings
     holding: false,          // true once they have touched the neck themselves
     showNames: true,
+    showKnown: false,
+    known: {},               // "string:fret" -> 0-100, out of the stored record
     lit: "",                 // a note lit up everywhere it lives
     litPositions: [],
     toFret: 12,
@@ -1079,14 +1166,16 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
   };
 
   var el = {};
-  ["engineStatus", "tuning", "neck", "fretNumbers", "neckTitle", "neckHint",
+  ["engineStatus", "tuning", "hand", "neck", "fretNumbers", "neckTitle", "neckHint",
    "modeChords", "modeFretboard", "chordPanels", "fretboardPanels",
    "roots", "qualities", "chordTitle", "chordSummary", "chordNotes",
    "voicingName", "voicingLevel", "voicingNote", "voicingStrings", "voicingOmitted",
    "voicingCount", "anotherVoicing", "previousVoicing", "hearChord", "simpleOnly",
    "reading", "readingVerdict", "readingDetail", "readingAlternates",
    "clearShape", "checkAgainst", "checkChord",
-   "showNames", "namesOff", "lightNote", "clearLit", "litSummary",
+   "showNames", "namesOff", "showKnown", "knownPanel", "lightNote", "clearLit", "litSummary",
+   "progressLine", "weakList", "forgetProgress", "progressWhere",
+   "summaryLifetime", "summaryWeak",
    "quizKind", "quizRange", "quizStrings", "startQuiz", "quizSetup", "quizLive",
    "quizTitle", "quizSummary", "questionText", "questionDetail", "choices", "tapPrompt",
    "quizReading", "quizVerdict", "quizDetail", "nextQuestion", "endQuiz",
@@ -1096,6 +1185,50 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
    "colophonEngine", "colophonFraming", "colophonBuild"].forEach(function (id) {
     el[id] = document.getElementById(id);
   });
+
+  /** Everything that outlives a visit, and the one place that knows where it
+      lives.
+
+      The record itself is opaque here on purpose: the engine wrote it, the
+      engine reads it, and a page that parsed it would be a second reader to
+      keep in step with the first. All this does is hold the string.
+
+      Browser storage can be unavailable - a private window, blocked site data -
+      and every read of it can throw. Failing to an empty record is the right way
+      round: a learner with no history is a learner on their first visit, which
+      is a case the quiz already handles and handles well. */
+  var PROGRESS_KEY = "guitarProgress";
+
+  function loadProgress() {
+    try { return window.localStorage.getItem(PROGRESS_KEY) || ""; } catch (e) { return ""; }
+  }
+
+  function saveProgress(text) {
+    // An empty record would wipe a real one, and the engine hands back an empty
+    // one whenever there was nothing to write down.
+    if (!text) return;
+
+    try { window.localStorage.setItem(PROGRESS_KEY, text); } catch (e) { /* private window */ }
+  }
+
+  function forget() {
+    try { window.localStorage.removeItem(PROGRESS_KEY); } catch (e) { /* nothing to remove */ }
+  }
+
+  function remember(key, value) {
+    try { window.localStorage.setItem(key, value); } catch (e) { /* private window */ }
+  }
+
+  function recall(key, fallback) {
+    try { return window.localStorage.getItem(key) || fallback; } catch (e) { return fallback; }
+  }
+
+  /** The day, as a number. The engine has no clock and is told what day it is,
+      exactly as it is told the seed - and it only ever subtracts two of these,
+      so any stable scale would do. */
+  function today() {
+    return Math.floor(Date.now() / 86400000);
+  }
 
   var SHARP = "♯";
   var FLAT = "♭";
@@ -1121,6 +1254,12 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
         target.appendChild(document.createTextNode(character));
       }
     }
+  }
+
+  /** "1 session", "6 sessions". A counter that says "1 questions" is a small
+      thing, and it makes everything around it look unfinished. */
+  function plural(count, noun) {
+    return count + " " + noun + (count === 1 ? "" : "s");
   }
 
   function prettyNote(text) {
@@ -1206,6 +1345,16 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
     return state.board ? state.board.strings.length : 6;
   }
 
+  /** A fret vector with nothing sounding. As long as the tuning has strings:
+      four for a bass, seven for a seven-string, and never a hard-coded six. */
+  function silentNeck() {
+    var frets = [];
+
+    for (var string = 0; string < stringCount(); string++) frets.push(MUTED);
+
+    return frets;
+  }
+
   function noteAt(string, fret) {
     if (!state.board) return -1;
 
@@ -1240,7 +1389,8 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
       var label = document.createElement("div");
       label.className = "string-label";
       label.textContent = (stringCount() - string) + "  " + prettyNote(openNoteName(string));
-      row.appendChild(label);
+
+      var cells = [label];
 
       for (var fret = 0; fret <= frets; fret++) {
         var cell = document.createElement("button");
@@ -1252,21 +1402,33 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
 
         // The inlays, on the wood rather than under it: a guitar has them
         // between the strings, and reading the fifth fret off a dot is how
-        // anyone navigates before they can read the notes.
-        if (fret > 0 && string === 2 && MARKERS.indexOf(fret) !== -1) cell.classList.add("inlaid");
-        if (fret === 12 && (string === 1 || string === 3)) cell.classList.add("inlaid");
+        // anyone navigates long before they can read the notes.
+        //
+        // The dot is drawn at the bottom edge of a row, so the row it goes on is
+        // the one above the middle of the neck - which is the middle of a bass's
+        // four strings and a seven-string's seven without any of them being a
+        // special case. At the twelfth there are two, straddling that centre,
+        // the way a real neck marks the octave.
+        var middle = Math.floor(stringCount() / 2);
+
+        if (fret > 0 && string === middle && MARKERS.indexOf(fret) !== -1) cell.classList.add("inlaid");
+        if (fret === 12 && (string === middle - 1 || string === middle + 1)) cell.classList.add("inlaid");
 
         cell.addEventListener("click", makeCellHandler(string, fret));
-        row.appendChild(cell);
+        cells.push(cell);
       }
 
+      // A left-handed neck is the same cells in the other order - not a mirrored
+      // one. A transform would flip the note names inside the dots too, and a
+      // neck full of backwards letters is worse than no left-handed mode at all.
+      if (state.hand === "left") cells.reverse();
+
+      cells.forEach(function (cell) { row.appendChild(cell); });
       el.neck.appendChild(row);
     }
 
     el.fretNumbers.textContent = "";
-    var spacer = document.createElement("span");
-    spacer.style.gridColumn = "span 2";
-    el.fretNumbers.appendChild(spacer);
+    var numbers = [];
 
     for (var number = 1; number <= frets; number++) {
       var mark = document.createElement("span");
@@ -1274,8 +1436,19 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
 
       if (MARKERS.indexOf(number) !== -1 || number === 12) mark.className = "marked";
 
-      el.fretNumbers.appendChild(mark);
+      numbers.push(mark);
     }
+
+    if (state.hand === "left") numbers.reverse();
+
+    var spacer = document.createElement("span");
+    spacer.style.gridColumn = "span 2";
+
+    // The two blank columns sit under the string names and the nut, which swap
+    // sides with the hand.
+    if (state.hand === "left") numbers.push(spacer); else numbers.unshift(spacer);
+
+    numbers.forEach(function (mark) { el.fretNumbers.appendChild(mark); });
   }
 
   function openNoteName(string) {
@@ -1409,18 +1582,25 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
       return;
     }
 
-    if (state.showNames) {
+    if (state.showNames || state.showKnown) {
       for (var string = 0; string < stringCount(); string++) {
         for (var fret = 0; fret <= state.toFret; fret++) {
           var lit = state.litPositions.some(function (position) {
             return position.string === string && position.fret === fret;
           });
 
-          if (!lit && !state.showNames) continue;
+          var strength = state.showKnown ? state.known[string + ":" + fret] : undefined;
 
-          mark(string, fret, prettyNote(noteName(string, fret)), {
-            className: lit ? "lit" : "ghosted"
+          // Somewhere never asked about has no colour to be painted in. Showing
+          // it as weak would be a claim about the learner that the record does
+          // not make.
+          if (!state.showNames && strength === undefined && !lit) continue;
+
+          var dot = mark(string, fret, prettyNote(noteName(string, fret)), {
+            className: lit ? "lit" : (strength === undefined ? "ghosted" : "")
           });
+
+          if (dot && strength !== undefined && !lit) dot.dataset.known = knownBand(strength);
         }
       }
 
@@ -1449,9 +1629,7 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
     // to the player. Clear hands it back, which is why that button exists.
     if (!state.holding) {
       state.holding = true;
-      state.held = state.shapes.length
-        ? state.shapes[state.shapeIndex].frets.slice()
-        : [MUTED, MUTED, MUTED, MUTED, MUTED, MUTED];
+      state.held = state.shapes.length ? state.shapes[state.shapeIndex].frets.slice() : silentNeck();
     }
 
     // Tapping where a finger already is lets that string go, so a shape can be
@@ -1661,6 +1839,15 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
     el.readingAlternates.textContent = "";
   }
 
+  /** Four bands, not a ramp. This is read at a glance across seventy-odd frets,
+      and nobody reads the difference between 71 and 76 per cent. */
+  function knownBand(strength) {
+    if (strength >= 90) return "sure";
+    if (strength >= 70) return "solid";
+    if (strength >= 40) return "mixed";
+    return "shaky";
+  }
+
   // --- learning the neck ----------------------------------------------------
   async function lightUp(noteName) {
     if (!noteName) return;
@@ -1695,6 +1882,56 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
     paintNeck();
   }
 
+  /** Asks the engine what this record says about this neck, and says it.
+
+      Called on arrival, when the tuning changes and after every quiz - the
+      three moments the answer can be different. */
+  async function loadProgressMap() {
+    var answer = await call("guitarProgressMap", ["string", "string", "number", "number", "number"],
+      [loadProgress(), state.tuning, 0, state.toFret, today()]);
+
+    if (!answer || !answer.ok) return;
+
+    state.known = {};
+    answer.places.forEach(function (place) {
+      state.known[place.string + ":" + place.fret] = place.strength;
+    });
+
+    el.progressLine.textContent = "";
+
+    if (!answer.sessions) {
+      el.progressLine.textContent = "Nothing yet. Take a quiz and this remembers it - including "
+                                  + "which frets caught you out, so they come back.";
+      el.weakList.textContent = "";
+      el.progressWhere.textContent = "";
+      paintNeck();
+      return;
+    }
+
+    var accuracy = answer.asked ? Math.round(answer.right * 100 / answer.asked) : 0;
+    var sessions = document.createElement("b");
+    sessions.textContent = plural(answer.sessions, "session");
+    el.progressLine.appendChild(sessions);
+    el.progressLine.appendChild(document.createTextNode(
+      ", " + plural(answer.asked, "question") + ", " + accuracy + "% right. "
+      + (answer.daysSince === 0 ? "You practised today. "
+                                : "You last practised " + answer.daysSince
+                                  + (answer.daysSince === 1 ? " day ago. " : " days ago. "))
+      + "Of this neck you have seen " + answer.placesSeen + " of its "
+      + answer.placesOnNeck + " places."));
+
+    el.weakList.textContent = "";
+
+    if (answer.weakest.length) {
+      var heading = document.createElement("li");
+      heading.textContent = "Still worth going back to: " + answer.weakest.join("; ") + ".";
+      el.weakList.appendChild(heading);
+    }
+
+    el.progressWhere.textContent = "Kept in this browser, and nowhere else.";
+    paintNeck();
+  }
+
   // --- the quiz -------------------------------------------------------------
   function quizRange() {
     var parts = el.quizRange.value.split("-");
@@ -1709,8 +1946,9 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
     var seed = (Date.now() % 100000) + 1;
 
     var question = await call("guitarQuizStart",
-      ["string", "string", "number", "number", "string", "string", "number"],
-      [el.quizKind.value, state.tuning, range.from, range.to, el.quizStrings.value, "", seed]);
+      ["string", "string", "number", "number", "string", "string", "number", "string", "number"],
+      [el.quizKind.value, state.tuning, range.from, range.to, el.quizStrings.value, "", seed,
+       loadProgress(), today()]);
 
     if (!question || !question.ok) {
       el.quizSetup.hidden = false;
@@ -1840,8 +2078,40 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
       return;
     }
 
+    // Stored before anything is drawn: a learner who closes the tab on the
+    // summary should still have the run in their record.
+    saveProgress(summary.progress);
+    await loadProgressMap();
+
     el.quizSummaryPanel.hidden = false;
     el.summaryHeadline.textContent = summary.headline;
+
+    el.summaryLifetime.textContent = "";
+
+    if (summary.sessions > 0 && summary.lifetimeAsked > summary.asked) {
+      var lifetime = Math.round(summary.lifetimeRight * 100 / summary.lifetimeAsked);
+      el.summaryLifetime.textContent = "Saved. Across " + plural(summary.sessions, "session")
+        + ": " + plural(summary.lifetimeAsked, "question") + ", " + lifetime + "% right.";
+    } else if (summary.asked > 0) {
+      el.summaryLifetime.textContent = "Saved. Come back and the frets you missed today will "
+                                     + "come round again.";
+    }
+
+    el.summaryWeak.textContent = "";
+
+    (summary.weakSpots || []).forEach(function (spot) {
+      var item = document.createElement("li");
+      item.textContent = spot.name;
+      el.summaryWeak.appendChild(item);
+    });
+
+    if (summary.weakSpots && summary.weakSpots.length) {
+      var lead = document.createElement("li");
+      lead.textContent = "Worth going back to:";
+      lead.style.listStyle = "none";
+      lead.style.marginLeft = "-18px";
+      el.summaryWeak.insertBefore(lead, el.summaryWeak.firstChild);
+    }
 
     el.summaryObservations.textContent = "";
     summary.observations.forEach(function (observation) {
@@ -1909,15 +2179,33 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
     if (tunings && tunings.ok) {
       el.tuning.textContent = "";
 
+      // Grouped by instrument, because a bass is not a tuning of a guitar and a
+      // menu that lists it as one tells a beginner something untrue. Which
+      // instruments there are is the engine's answer, not a list kept here.
+      var groups = {};
+
       tunings.tunings.forEach(function (tuning) {
+        if (!groups[tuning.instrument]) {
+          var group = document.createElement("optgroup");
+          group.label = tuning.instrument === "bass" ? "Bass" : "Guitar";
+          groups[tuning.instrument] = group;
+          el.tuning.appendChild(group);
+        }
+
         var option = document.createElement("option");
         option.value = tuning.key;
         option.textContent = tuning.name + " · " + prettyNote(tuning.spelling);
-        option.title = tuning.summary;
-        el.tuning.appendChild(option);
+        option.title = tuning.summary + " (" + tuning.strings + " strings)";
+        groups[tuning.instrument].appendChild(option);
       });
 
       el.tuning.value = state.tuning;
+
+      // A tuning remembered from a version that had one this build does not.
+      if (!el.tuning.value) {
+        state.tuning = "standard";
+        el.tuning.value = state.tuning;
+      }
     }
 
     var qualities = await call("guitarChordQualities", [], []);
@@ -2042,10 +2330,27 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
 
   el.tuning.addEventListener("change", async function () {
     state.tuning = el.tuning.value;
+    remember("guitarTuning", state.tuning);
+
+    state.held = [];
+    state.litPositions = [];
+
     await loadBoard();
     await loadShapes();
 
+    // Knowledge is per tuning: the same fret is a different note in each, so
+    // the map has to be fetched again rather than repainted.
+    await loadProgressMap();
+
     if (state.lit) lightUp(state.lit);
+  });
+
+  el.hand.addEventListener("change", function () {
+    state.hand = el.hand.value;
+    remember("guitarHand", state.hand);
+    document.body.dataset.hand = state.hand;
+    renderNeck();
+    paintNeck();
   });
 
   el.anotherVoicing.addEventListener("click", function () { stepShape(1); });
@@ -2062,7 +2367,7 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
 
   el.clearShape.addEventListener("click", function () {
     state.holding = false;
-    state.held = [MUTED, MUTED, MUTED, MUTED, MUTED, MUTED];
+    state.held = silentNeck();
     resetReading();
     paintNeck();
   });
@@ -2071,6 +2376,22 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
   el.showNames.addEventListener("change", function () {
     state.showNames = el.showNames.checked;
     paintNeck();
+  });
+
+  el.showKnown.addEventListener("change", function () {
+    state.showKnown = el.showKnown.checked;
+    el.knownPanel.hidden = !state.showKnown;
+    paintNeck();
+  });
+
+  el.forgetProgress.addEventListener("click", async function () {
+    // Asked rather than assumed: this is the one button on the page that
+    // destroys something, and what it destroys is weeks of somebody's practice.
+    if (!window.confirm("Forget everything this browser has recorded about your practice? "
+                      + "There is no undo.")) return;
+
+    forget();
+    await loadProgressMap();
   });
   el.lightNote.addEventListener("change", function () {
     if (el.lightNote.value) lightUp(el.lightNote.value); else clearLit();
@@ -2142,9 +2463,18 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
     el.engineStatus.textContent = "engine ready";
     writeColophon(kind);
 
+    // Preferences first, so nothing is drawn twice: which tuning and which way
+    // round are per-viewer conveniences, and the page works the same when the
+    // browser has forgotten both.
+    state.hand = recall("guitarHand", "right") === "left" ? "left" : "right";
+    document.body.dataset.hand = state.hand;
+    el.hand.value = state.hand;
+    state.tuning = recall("guitarTuning", "standard");
+
     await loadBoard();
     await loadCatalogues();
     await loadShapes();
+    await loadProgressMap();
 
     applyMode();
     return kind;

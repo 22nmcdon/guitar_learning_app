@@ -2,6 +2,7 @@
 
 #include "guitar/core/ChordSymbol.h"
 #include "guitar/core/Fretboard.h"
+#include "guitar/core/Progress.h"
 
 #include <string>
 #include <vector>
@@ -54,6 +55,20 @@ struct QuizOptions
         clock, decides what the seed is.
     */
     unsigned seed { 1 };
+
+    /** Everything this learner has done before, as `Progress::toText` wrote it.
+
+        Empty is a first visit, and a first visit is not a special case: with no
+        history every place weighs the same and the quiz behaves exactly as it
+        did before any of this existed.
+    */
+    std::string progressText;
+
+    /** The day, as a number the shell worked out - days since the epoch, or any
+        other scale, as long as it is the same one next time. The engine only
+        ever subtracts two of them, which is the most a thing with no clock can
+        honestly do with a date. */
+    int today { 0 };
 };
 
 struct QuizQuestion
@@ -96,6 +111,15 @@ struct QuizVerdict
     int right {};
 };
 
+/** A place worth going back to, named as well as located. */
+struct WeakSpot
+{
+    int string {};
+    int fret {};
+    std::string name;     ///< "5th string, 7th fret"
+    int strength {};      ///< 0-100, as `Progress::strengthFor` sees it
+};
+
 struct StringTally
 {
     int string {};
@@ -128,6 +152,20 @@ struct QuizSummary
         this as data like everything else about when. Zero when the shell never
         said. */
     int medianMs {};
+
+    //==========================================================================
+    // What this run added to everything before it. The shell stores
+    // `progressText` and hands it back on the next `start`; the rest is for
+    // showing, and the engine keeps none of it once this struct is returned.
+
+    std::string progressText;
+    int sessions {};
+    int lifetimeAsked {};
+    int lifetimeRight {};
+    int daysSinceLastSession {};   ///< 0 when this is the first session, or the same day
+
+    /** The places in this tuning still worth going back to, weakest first. */
+    std::vector<WeakSpot> weakSpots;
 };
 
 /** One learner's run through the fretboard.
@@ -160,6 +198,11 @@ private:
 
     QuizOptions options;
     Tuning tuning;
+    Progress progress;
+
+    /** The history as it stood when this run started, so the summary can say
+        what the run did to it rather than describing the state it left. */
+    Progress incoming;
     bool isRunning {};
     bool awaitingAnswer {};
 
@@ -177,6 +220,7 @@ private:
     int right {};
     std::vector<StringTally> tallies;
     std::vector<int> times;
+    int returnedToMisses {};   ///< questions this run about places already missed before it
     int naturalsAsked {}, naturalsRight {};
     int accidentalsAsked {}, accidentalsRight {};
     int lowAsked {}, lowRight {}, highAsked {}, highRight {};

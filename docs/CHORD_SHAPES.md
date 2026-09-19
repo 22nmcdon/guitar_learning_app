@@ -73,7 +73,21 @@ other chord is invisible to both.
 
 ## Naming is derived, not stored
 
-"E-shape barre, 5th fret" is read off the shape: there is a barre, the bass note
-is the root, and the root is on the sixth string. That is the whole of what the
-CAGED letters mean, so the name comes out of the geometry rather than out of a
-lookup that could disagree with it.
+"E-shape barre, 5th fret" is read off the shape: there is a barre, and the bass
+note is the root.
+
+The letter itself comes from the *tuning*, not from the string number. Those
+letters are names for the open chord a grip came from, and that only exists
+where the strings above the root are tuned the way a standard guitar's are - so
+the test is the interval pattern above the bass string. Five strings at 5-5-5-4-5
+is the E shape wherever that string happens to be, which is why it is still the
+E shape on a seven-string (where it is the second string up) and still the E
+shape tuned down a semitone (where the string is an E flat).
+
+Everything else gets no letter, correctly. The low string in drop D is a D, but
+the grip rooted there is not the D shape, because the string above it is a fifth
+away instead of a fourth. A bass fails the same test, for the good reason that
+CAGED is guitar vocabulary about six strings.
+
+This was string numbers to begin with - index 0 meant E-shape - and it was
+quietly wrong for every tuning that is not a standard six.

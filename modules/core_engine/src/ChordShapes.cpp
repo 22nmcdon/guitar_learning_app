@@ -198,18 +198,35 @@ namespace
         return result;
     }
 
-    /** Which of the CAGED grips this is, read off the shape rather than matched
-        against a table: the name comes from where the root sits under the barre,
-        which is the whole of what those letters mean. */
-    std::string barreShapeName (int bassString)
+    /** Which of the CAGED grips this is, read off the tuning rather than off the
+        string number.
+
+        The letters are not names for "the sixth string" and so on - they are
+        names for the open chord the grip came from, and that only exists where
+        the strings above the root are tuned the way a standard guitar's are.
+        So the test is the interval pattern above the bass string: five strings
+        at 5-5-5-4-5 is the E shape wherever that string happens to be, which is
+        why it is still the E shape on a seven-string (where it is the second
+        string up) and still the E shape tuned down a semitone (where the string
+        is an Eb).
+
+        Everything else gets no letter, and correctly: the low string in drop D
+        is a D, but the grip rooted there is not the D shape, because the string
+        above it is a fifth away instead of a fourth. A bass fails the test too,
+        for the good reason that CAGED is guitar vocabulary about six strings.
+    */
+    std::string barreShapeName (const Fretboard& board, int bassString)
     {
-        switch (bassString)
-        {
-            case 0:  return "E-shape barre";
-            case 1:  return "A-shape barre";
-            case 2:  return "D-shape barre";
-            default: return "Barre";
-        }
+        std::vector<int> above;
+
+        for (auto string = bassString; string + 1 < board.stringCount(); ++string)
+            above.push_back (board.noteAt (string + 1, 0) - board.noteAt (string, 0));
+
+        if (above == std::vector<int> { 5, 5, 5, 4, 5 }) return "E-shape barre";
+        if (above == std::vector<int> { 5, 5, 4, 5 })    return "A-shape barre";
+        if (above == std::vector<int> { 5, 4, 5 })       return "D-shape barre";
+
+        return "Barre";
     }
 
     /** True when two fret vectors are the same grip with different strings let
@@ -430,7 +447,7 @@ std::vector<ChordShape> chordShapes (const Chord& chord, const Tuning& tuning, c
 
                 if (examined.barreFret > 0)
                 {
-                    shape.name = (shape.rootInBass ? barreShapeName (bassString) : std::string ("Barre"))
+                    shape.name = (shape.rootInBass ? barreShapeName (board, bassString) : std::string ("Barre"))
                                + ", " + ordinal (examined.barreFret) + " fret";
                     shape.note = "One grip, and it moves: the same shape two frets up is "
                                + movedUp + ".";

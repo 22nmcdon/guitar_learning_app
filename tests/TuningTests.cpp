@@ -13,15 +13,45 @@ TEST ("standard tuning is what everything defaults to")
     CHECK (! tuningFor ("open-z").has_value());
 }
 
-TEST ("every tuning has six strings, written low to high")
+TEST ("every tuning is written low to high, however many strings it has")
 {
     for (const auto& tuning : tunings())
     {
-        CHECK_EQ (static_cast<int> (tuning.openNotes.size()), 6);
+        // Four for a bass, seven for a seven-string. Nothing in the engine
+        // assumes six, and this is where that stops being assumed by a test.
+        CHECK (tuning.openNotes.size() >= 4);
+        CHECK (tuning.openNotes.size() <= 7);
+        CHECK (tuning.instrument == "guitar" || tuning.instrument == "bass");
 
         for (std::size_t i = 1; i < tuning.openNotes.size(); ++i)
             CHECK (tuning.openNotes[i] >= tuning.openNotes[i - 1]);
     }
+}
+
+TEST ("a bass is the guitar's bottom four strings, an octave down")
+{
+    const auto standard = tuningFor ("standard").value();
+    const auto bass = tuningFor ("bass").value();
+
+    CHECK_EQ (static_cast<int> (bass.openNotes.size()), 4);
+    CHECK_EQ (bass.instrument, std::string ("bass"));
+
+    for (std::size_t i = 0; i < bass.openNotes.size(); ++i)
+        CHECK_EQ (bass.openNotes[i], standard.openNotes[i] - 12);
+}
+
+TEST ("a seven-string is standard with one more underneath it")
+{
+    const auto standard = tuningFor ("standard").value();
+    const auto seven = tuningFor ("seven-string").value();
+
+    CHECK_EQ (static_cast<int> (seven.openNotes.size()), 7);
+
+    for (std::size_t i = 0; i < standard.openNotes.size(); ++i)
+        CHECK_EQ (seven.openNotes[i + 1], standard.openNotes[i]);
+
+    // And the new one is a fourth below the old bottom string.
+    CHECK_EQ (seven.openNotes[1] - seven.openNotes[0], 5);
 }
 
 TEST ("the spelling written beside a tuning is the tuning")

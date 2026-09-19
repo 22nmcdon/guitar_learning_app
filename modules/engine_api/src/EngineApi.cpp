@@ -14,6 +14,7 @@
 #include "guitar/core/ChordSymbol.h"
 #include "guitar/core/Fretboard.h"
 #include "guitar/core/FretboardQuiz.h"
+#include "guitar/core/Progress.h"
 #include "guitar/core/ShapeIdentifier.h"
 #include "guitar/core/Tuning.h"
 
@@ -204,6 +205,8 @@ std::string tunings()
                     + ",\"name\":" + quoted (tuning.name)
                     + ",\"spelling\":" + quoted (tuning.spelling)
                     + ",\"summary\":" + quoted (tuning.summary)
+                    + ",\"instrument\":" + quoted (tuning.instrument)
+                    + ",\"strings\":" + std::to_string (tuning.openNotes.size())
                     + ",\"openNotes\":" + jsonNumbers (tuning.openNotes)
                     + ",\"openNames\":" + jsonStrings (names) + "}";
            })
@@ -415,7 +418,8 @@ std::string positionsFor (const char* noteName, const char* tuningKey, int fromF
 
 //==============================================================================
 std::string quizStart (const char* kind, const char* tuningKey, int fromFret, int toFret,
-                       const char* stringsCsv, const char* chordSymbol, int seed)
+                       const char* stringsCsv, const char* chordSymbol, int seed,
+                       const char* progressText, int today)
 {
     QuizOptions options;
     options.kind = text (kind).empty() ? "name-note" : text (kind);
@@ -425,6 +429,8 @@ std::string quizStart (const char* kind, const char* tuningKey, int fromFret, in
     options.strings = parseNumbers (text (stringsCsv));
     options.chordSymbol = text (chordSymbol);
     options.seed = static_cast<unsigned> (seed);
+    options.progressText = text (progressText);
+    options.today = today;
 
     return jsonQuestion (quiz().start (options));
 }
@@ -460,6 +466,21 @@ std::string quizEnd()
          + ",\"headline\":" + quoted (summary.headline)
          + ",\"medianMs\":" + std::to_string (summary.medianMs)
          + ",\"observations\":" + jsonStrings (summary.observations)
+         // What the shell stores. It is opaque to the shell on purpose: the
+         // format is the engine's, and a page that parsed it would be a second
+         // reader to keep in step with the first.
+         + ",\"progress\":" + quoted (summary.progressText)
+         + ",\"sessions\":" + std::to_string (summary.sessions)
+         + ",\"lifetimeAsked\":" + std::to_string (summary.lifetimeAsked)
+         + ",\"lifetimeRight\":" + std::to_string (summary.lifetimeRight)
+         + ",\"daysSince\":" + std::to_string (summary.daysSinceLastSession)
+         + ",\"weakSpots\":" + jsonArray (summary.weakSpots, [] (const WeakSpot& spot)
+           {
+               return "{\"string\":" + std::to_string (spot.string)
+                    + ",\"fret\":" + std::to_string (spot.fret)
+                    + ",\"name\":" + quoted (spot.name)
+                    + ",\"strength\":" + std::to_string (spot.strength) + "}";
+           })
          + ",\"perString\":" + jsonArray (summary.perString, [] (const StringTally& tally)
            {
                return "{\"string\":" + std::to_string (tally.string)
@@ -468,6 +489,64 @@ std::string quizEnd()
                     + ",\"right\":" + std::to_string (tally.right) + "}";
            })
          + "}";
+}
+
+//==============================================================================
+std::string progressMap (const char* progressText, const char* tuningKey,
+                         int fromFret, int toFret, int today)
+{
+    auto tuning = tuningFor (text (tuningKey));
+
+    if (! tuning.has_value())
+        return jsonError ("no tuning called '" + text (tuningKey) + "'");
+
+    const auto progress = Progress::fromText (text (progressText));
+    const Fretboard board { *tuning };
+    const auto low = std::max (0, fromFret);
+    const auto high = std::min (toFret > 0 ? toFret : 12, highestFret);
+
+    std::string places = "[";
+
+    for (auto string = 0; string < board.stringCount(); ++string)
+    {
+        for (auto fret = low; fret <= high; ++fret)
+        {
+            // Keyed by the tuning the engine resolved, not by whatever the
+            // shell typed: an empty key means standard, and a record written
+            // under "" would be a second history nobody could find again.
+            const auto strength = progress.strengthFor (tuning->key, { string, fret }, today);
+
+            // Places never asked about are left out rather than sent as -1:
+            // the map is what is known, and on a first visit that is nothing.
+            if (strength < 0)
+                continue;
+
+            if (places.size() > 1)
+                places += ",";
+
+            places += "{\"string\":" + std::to_string (string)
+                    + ",\"fret\":" + std::to_string (fret)
+                    + ",\"strength\":" + std::to_string (strength) + "}";
+        }
+    }
+
+    places += "]";
+
+    std::vector<std::string> weakest;
+
+    for (const auto& record : progress.weakest (tuning->key, 4, today))
+        weakest.push_back (board.stringName (record.string) + ", "
+                           + (record.fret == 0 ? std::string ("open") : "fret " + std::to_string (record.fret)));
+
+    return "{\"ok\":true,\"sessions\":" + std::to_string (progress.sessions())
+         + ",\"asked\":" + std::to_string (progress.totalAsked())
+         + ",\"right\":" + std::to_string (progress.totalRight())
+         + ",\"placesSeen\":" + std::to_string (progress.placesSeen (tuning->key))
+         + ",\"placesOnNeck\":" + std::to_string (board.stringCount() * (high - low + 1))
+         + ",\"daysSince\":" + std::to_string (progress.sessions() > 0
+                                                    ? std::max (0, today - progress.lastDay()) : 0)
+         + ",\"weakest\":" + jsonStrings (weakest)
+         + ",\"places\":" + places + "}";
 }
 
 } // namespace guitar::api

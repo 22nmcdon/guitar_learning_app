@@ -25,11 +25,21 @@ struct Tuning
     std::string spelling;   ///< "E A D G B E", for showing next to the name
     std::string summary;    ///< one line on what it is for
 
+    /** "guitar" or "bass". The engine does nothing differently for either - a
+        bass is six strings minus two, as far as any of this is concerned - and
+        it is here so a menu can group them and a shell can say which instrument
+        it is drawing. */
+    std::string instrument { "guitar" };
+
     /** MIDI note of each open string, lowest-pitched first.
 
-        Index 0 is the sixth string - the thick one nearest your chin. This is
+        Index 0 is the lowest string - the thick one nearest your chin. This is
         the one convention the whole engine shares; `docs/FRETBOARD.md` says why
-        it is this way round and not the guitarist's numbering.
+        it is this way round and not the player's numbering.
+
+        The length of this is the number of strings, and nothing anywhere
+        assumes it is six: a four-string bass and a seven-string guitar are the
+        same code path with a different list.
     */
     std::vector<int> openNotes;
 };

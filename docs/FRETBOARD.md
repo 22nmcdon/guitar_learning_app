@@ -49,6 +49,27 @@ comfortably, and every extra fret multiplies the shape search. Draw more if you
 like - the page draws twelve by default - but do not expect the engine to find a
 voicing up there.
 
+## Nothing assumes six strings
+
+A `Tuning` is a list of open strings of any length. Four of them is a bass,
+seven is a seven-string, and neither is a special case anywhere: the shape
+generator loops over `stringCount()`, the quiz builds its pool from it, and the
+page sizes its fret vectors from the board the engine handed it. The one place
+that ever knew the number was a test that asserted six, and it was wrong.
+
+Two things do read the count, and both read it rather than assuming it:
+`Fretboard::stringName` (the sixth string of a four-string bass is its fourth)
+and the CAGED naming in `ChordShapes.cpp`, which is about the *intervals* above
+the root rather than about which string it is. See `docs/CHORD_SHAPES.md`.
+
+## Which way round is a drawing decision
+
+Left-handed is not in the engine and must not be. The notes at a position do not
+change with the hand holding the instrument; what changes is which side of the
+picture the nut is on. The page draws the same cells in the other order - it does
+not mirror them with a transform, because a mirrored neck mirrors the note names
+written on it too.
+
 ## Tunings are arguments, never assumptions
 
 Nothing in the engine contains E-A-D-G-B-E. A `Fretboard` is built from a

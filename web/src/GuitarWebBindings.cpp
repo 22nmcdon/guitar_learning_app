@@ -81,10 +81,19 @@ GUITAR_EXPORT const char* guitarPositionsFor (const char* noteName, const char* 
 
 GUITAR_EXPORT const char* guitarQuizStart (const char* kind, const char* tuningKey,
                                            int fromFret, int toFret, const char* stringsCsv,
-                                           const char* chordSymbol, int seed)
+                                           const char* chordSymbol, int seed,
+                                           const char* progressText, int today)
 {
     return hold (guitar::api::quizStart (orEmpty (kind), orEmpty (tuningKey), fromFret, toFret,
-                                         orEmpty (stringsCsv), orEmpty (chordSymbol), seed));
+                                         orEmpty (stringsCsv), orEmpty (chordSymbol), seed,
+                                         orEmpty (progressText), today));
+}
+
+GUITAR_EXPORT const char* guitarProgressMap (const char* progressText, const char* tuningKey,
+                                             int fromFret, int toFret, int today)
+{
+    return hold (guitar::api::progressMap (orEmpty (progressText), orEmpty (tuningKey),
+                                           fromFret, toFret, today));
 }
 
 GUITAR_EXPORT const char* guitarQuizAnswer (const char* given, int elapsedMs)

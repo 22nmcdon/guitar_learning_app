@@ -74,7 +74,12 @@ namespace
         // browser behave the same way without this shell remembering a thing.
         if (name == "guitarQuizStart")
             return api::quizStart (text (0).c_str(), text (1).c_str(), number (2), number (3),
-                                   text (4).c_str(), text (5).c_str(), number (6));
+                                   text (4).c_str(), text (5).c_str(), number (6),
+                                   text (7).c_str(), number (8));
+
+        if (name == "guitarProgressMap")
+            return api::progressMap (text (0).c_str(), text (1).c_str(),
+                                     number (2), number (3), number (4));
 
         if (name == "guitarQuizAnswer")
             return api::quizAnswer (text (0).c_str(), number (1));

@@ -170,6 +170,12 @@ QuizQuestion FretboardQuiz::start (const QuizOptions& optionsToUse)
     }
 
     tuning = *found;
+
+    // Everything written down is keyed by the tuning the engine resolved rather
+    // than by whatever the shell typed: an empty key means standard, and a
+    // history filed under "" is one nobody can find again.
+    options.tuningKey = tuning.key;
+
     const Fretboard board { tuning };
 
     options.fromFret = std::max (0, options.fromFret);
@@ -202,6 +208,12 @@ QuizQuestion FretboardQuiz::start (const QuizOptions& optionsToUse)
         return question;
     }
 
+    // The history the shell handed back, and a copy of it as it stands now: the
+    // summary wants to say what this run did, which needs the before as well as
+    // the after.
+    progress = Progress::fromText (options.progressText);
+    incoming = progress;
+
     wrongAt.assign (pool.size(), 0);
     lastAsked = -1;
     rng = options.seed == 0 ? 1u : options.seed;
@@ -211,6 +223,7 @@ QuizQuestion FretboardQuiz::start (const QuizOptions& optionsToUse)
     tallies.clear();
     naturalsAsked = naturalsRight = accidentalsAsked = accidentalsRight = 0;
     lowAsked = lowRight = highAsked = highRight = 0;
+    returnedToMisses = 0;
     isRunning = true;
 
     return ask();
@@ -231,7 +244,12 @@ QuizQuestion FretboardQuiz::ask()
         if (static_cast<int> (i) == lastAsked)
             continue;
 
-        weights[i] = 1 + 3 * wrongAt[i];
+        // Two things stack: what the learner got wrong in the last ten minutes,
+        // and what they have been getting wrong for a fortnight. With no
+        // history the second term is the same everywhere, so a first visit
+        // behaves exactly as it did before any of this existed.
+        weights[i] = progress.weightFor (options.tuningKey, pool[i], options.today)
+                   + 4 * wrongAt[i];
         total += weights[i];
     }
 
@@ -427,6 +445,20 @@ QuizVerdict FretboardQuiz::answer (const std::string& given, int elapsedMs)
 
     ++asked;
 
+    // Counted on the first answer, not on `start`: a quiz that was opened and
+    // walked away from is not a session, and would otherwise show up as one in
+    // a count somebody is reading as "days I practised".
+    if (asked == 1)
+        progress.beginSession (options.today);
+
+    // Whether this place was already a known weakness before today, asked of the
+    // history as it was rather than as it is about to be.
+    if (const auto* before = incoming.lookup (options.tuningKey, current.position))
+        if (before->right < before->asked)
+            ++returnedToMisses;
+
+    progress.record (options.tuningKey, current.position, verdict.correct, options.today);
+
     if (verdict.correct)
         ++right;
     else if (lastAsked >= 0 && lastAsked < static_cast<int> (wrongAt.size()))
@@ -525,6 +557,30 @@ QuizSummary FretboardQuiz::finish()
     isRunning = false;
     awaitingAnswer = false;
 
+    // Carried whether or not anything was asked, so that a shell storing this
+    // never has to decide: what comes back is the history, and an abandoned run
+    // leaves it exactly as it found it.
+    summary.progressText = progress.toText();
+    summary.sessions = progress.sessions();
+    summary.lifetimeAsked = progress.totalAsked();
+    summary.lifetimeRight = progress.totalRight();
+    summary.daysSinceLastSession = incoming.sessions() > 0
+                                       ? std::max (0, options.today - incoming.lastDay())
+                                       : 0;
+
+    {
+        const Fretboard board { tuning };
+
+        for (const auto& record : progress.weakest (options.tuningKey, 4, options.today))
+            summary.weakSpots.push_back ({ record.string, record.fret,
+                                           board.stringName (record.string) + ", "
+                                               + (record.fret == 0 ? std::string ("open")
+                                                                   : "fret " + std::to_string (record.fret)),
+                                           progress.strengthFor (options.tuningKey,
+                                                                 { record.string, record.fret },
+                                                                 options.today) });
+    }
+
     if (asked == 0)
     {
         summary.headline = "Nothing asked yet.";
@@ -589,10 +645,35 @@ QuizSummary FretboardQuiz::finish()
             summary.observations.push_back ("Quick as well as right. Move the fret range up and do it again.");
     }
 
+    // What this run was against everything before it. Only worth saying once
+    // there is a before: on a first visit these would all be statements about
+    // a single run, dressed up as history.
+    if (summary.daysSinceLastSession >= 1 && returnedToMisses > 0)
+        summary.observations.push_back (std::to_string (returnedToMisses) + " of today's "
+            + std::to_string (asked) + " were places you missed last time. That is the point of "
+            "keeping a record - and getting one of those right is worth more than getting a "
+            "fresh one right.");
+
+    const auto lifetime = summary.lifetimeAsked > 0
+                              ? (summary.lifetimeRight * 100 + summary.lifetimeAsked / 2) / summary.lifetimeAsked
+                              : 0;
+
+    if (incoming.totalAsked() >= 20 && std::abs (summary.accuracy - lifetime) >= 10)
+        summary.observations.push_back (summary.accuracy > lifetime
+            ? "Today's " + std::to_string (summary.accuracy) + "% is up on the "
+              + std::to_string (lifetime) + "% you are running across every session."
+            : "Below the " + std::to_string (lifetime) + "% you usually run. A wider fret range "
+              "will do that, and it is the right kind of worse.");
+
     if (summary.observations.empty())
         summary.observations.push_back (summary.accuracy >= 80
             ? "Nothing stands out as weak. Widen the fret range, or take the string filter off."
             : "Too early to see a pattern. Another dozen questions will show one.");
+
+    // Four is as many as anyone reads. The ones above are ordered weakest-first
+    // by what they say about the player, so the tail is the right end to drop.
+    if (summary.observations.size() > 4)
+        summary.observations.resize (4);
 
     return summary;
 }

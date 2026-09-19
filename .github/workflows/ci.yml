@@ -38,6 +38,28 @@ jobs:
               || { echo "::error file=$file::says a test count that is not $count"; exit 1; }
           done
 
+      # An engine call the app cannot answer is the quietest failure this project
+      # has: the browser is fine, the app replies "no engine call named that",
+      # the page's `call()` hands back ok:false, and the feature simply does not
+      # happen - with no error anywhere. Both shells are asked here instead.
+      - name: Both shells answer every call the page makes
+        run: |
+          grep -oE '(^|[^a-zA-Z])call\("guitar[A-Za-z]*"' web/index.html \
+            | grep -oE 'guitar[A-Za-z]*' | sort -u > /tmp/page-calls
+          test -s /tmp/page-calls
+          echo "the page makes $(wc -l < /tmp/page-calls) kinds of engine call"
+
+          missing=0
+
+          while read -r name; do
+            grep -q "name == \"$name\"" app/src/WebUi.cpp \
+              || { echo "::error file=app/src/WebUi.cpp::the app cannot answer $name"; missing=1; }
+            grep -q "\"_$name\"" web/build.sh \
+              || { echo "::error file=web/build.sh::the WebAssembly build does not export $name"; missing=1; }
+          done < /tmp/page-calls
+
+          test "$missing" -eq 0
+
   app:
     name: Standalone app
     runs-on: ubuntu-latest

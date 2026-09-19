@@ -26,6 +26,12 @@ TEST ("the catalogues come back as lists a menu can be built from")
     CHECK (says (tunings(), "\"spelling\":\"E A D G B E\""));
     CHECK (says (tunings(), "\"openNames\":"));
 
+    // A menu has to be able to group them and a neck has to know how many rows
+    // to draw, so both come over the wire rather than being assumed at six.
+    CHECK (says (tunings(), "\"instrument\":\"bass\""));
+    CHECK (says (tunings(), "\"strings\":4"));
+    CHECK (says (tunings(), "\"strings\":7"));
+
     CHECK (ok (chordQualities()));
     CHECK (says (chordQualities(), "\"family\":\"Triads\""));
     CHECK (says (chordQualities(), "\"name\":\"half-diminished\""));
@@ -123,7 +129,7 @@ TEST ("every place a note can be played is offered")
 
 TEST ("a quiz runs from start to summary over the wire")
 {
-    const auto first = quizStart ("name-note", "standard", 0, 5, "", "", 99);
+    const auto first = quizStart ("name-note", "standard", 0, 5, "", "", 99, "", 0);
 
     CHECK (ok (first));
     CHECK (says (first, "\"number\":1"));
@@ -148,6 +154,65 @@ TEST ("a quiz runs from start to summary over the wire")
     CHECK (says (summary, "\"medianMs\":1500"));
 }
 
+TEST ("a run is handed back as something the shell can store")
+{
+    quizStart ("name-note", "standard", 0, 5, "", "", 7, "", 500);
+    quizAnswer ("C", 900);
+    const auto summary = quizEnd();
+
+    CHECK (says (summary, "\"progress\":\"guitar-progress 1"));
+    CHECK (says (summary, "\"sessions\":1"));
+    CHECK (says (summary, "\"lifetimeAsked\":1"));
+    CHECK (says (summary, "\"weakSpots\":"));
+}
+
+TEST ("a stored run comes back as a map of what is known")
+{
+    quizStart ("name-note", "standard", 0, 3, "0", "", 11, "", 500);
+
+    for (auto i = 0; i < 4; ++i)
+    {
+        quizAnswer ("C", 800);
+        quizNext();
+    }
+
+    const auto stored = quizEnd();
+    const auto start = stored.find ("\"progress\":\"") + 12;
+    auto blob = stored.substr (start, stored.find ("\"", start) - start);
+
+    // The wire escapes the newlines the engine wrote; the shell hands the same
+    // string straight back, so the test has to unescape what JSON did to it.
+    for (auto at = blob.find ("\\n"); at != std::string::npos; at = blob.find ("\\n"))
+        blob.replace (at, 2, "\n");
+
+    const auto map = progressMap (blob.c_str(), "standard", 0, 3, 500);
+
+    CHECK (ok (map));
+    CHECK (says (map, "\"sessions\":1"));
+    CHECK (says (map, "\"asked\":4"));
+    CHECK (says (map, "\"strength\":"));
+    CHECK (says (map, "\"placesOnNeck\":24"));
+
+    // And a different tuning knows nothing about it, because a fret there is a
+    // different note.
+    CHECK (says (progressMap (blob.c_str(), "drop-d", 0, 3, 500), "\"places\":[]"));
+}
+
+TEST ("a first visit has a map with nothing on it rather than an error")
+{
+    const auto map = progressMap ("", "standard", 0, 12, 0);
+
+    CHECK (ok (map));
+    CHECK (says (map, "\"places\":[]"));
+    CHECK (says (map, "\"sessions\":0"));
+    CHECK (says (map, "\"weakest\":[]"));
+}
+
+TEST ("a map of a tuning nobody has is an error, not an empty map")
+{
+    CHECK (says (progressMap ("", "sitar", 0, 12, 0), "\"ok\":false"));
+}
+
 TEST ("a quiz that is not running refuses to be answered")
 {
     quizEnd();
@@ -157,7 +222,7 @@ TEST ("a quiz that is not running refuses to be answered")
 
 TEST ("a quiz can be asked about two strings only")
 {
-    const auto json = quizStart ("find-note", "standard", 0, 12, "0,1", "", 3);
+    const auto json = quizStart ("find-note", "standard", 0, 12, "0,1", "", 3, "", 0);
 
     CHECK (ok (json));
     CHECK (says (json, "\"answerKind\":\"position\""));
@@ -167,8 +232,8 @@ TEST ("a quiz can be asked about two strings only")
 
 TEST ("a quiz the engine cannot set comes back as an error")
 {
-    CHECK (says (quizStart ("name-note", "sitar", 0, 5, "", "", 1), "\"ok\":false"));
-    CHECK (says (quizStart ("nope", "standard", 0, 5, "", "", 1), "\"ok\":false"));
+    CHECK (says (quizStart ("name-note", "sitar", 0, 5, "", "", 1, "", 0), "\"ok\":false"));
+    CHECK (says (quizStart ("nope", "standard", 0, 5, "", "", 1, "", 0), "\"ok\":false"));
     quizEnd();
 }
 

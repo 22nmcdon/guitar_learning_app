@@ -22,7 +22,8 @@ namespace guitar::api
 // here so that there is one of it: a page holding its own copy of the tunings
 // is a page that disagrees with the engine the first time one is added.
 
-/** Every tuning, with the notes of its open strings. */
+/** Every tuning, with the notes of its open strings, how many there are, and
+    which instrument it belongs to. Nothing here assumes six of anything. */
 std::string tunings();
 
 /** Every chord quality the engine can read and build, grouped for a menu. */
@@ -86,9 +87,29 @@ std::string positionsFor (const char* noteName, const char* tuningKey, int fromF
       quizEnd      stop, and hand back the run to read
 */
 std::string quizStart (const char* kind, const char* tuningKey, int fromFret, int toFret,
-                       const char* stringsCsv, const char* chordSymbol, int seed);
+                       const char* stringsCsv, const char* chordSymbol, int seed,
+                       const char* progressText, int today);
 std::string quizAnswer (const char* given, int elapsedMs);
 std::string quizNext();
 std::string quizEnd();
+
+//==============================================================================
+/** What a learner knows, out of what they have done before.
+
+    @param progressText  the block a previous `quizEnd` handed back, or empty
+    @param tuningKey     knowledge is per tuning: the same fret is a different
+                         note in each, so a record of one says nothing about
+                         another
+    @param today         the shell's day number, for the fading
+
+    Comes back as a strength per position for painting the neck, plus the
+    overview a learner actually wants: how many sessions, how much of this neck
+    they have seen, and which places are still worth going back to.
+
+    The engine stores none of this. It is handed the record, it answers, and it
+    forgets - the storing is the shell's, and `docs/QUIZZES.md` says why.
+*/
+std::string progressMap (const char* progressText, const char* tuningKey,
+                         int fromFret, int toFret, int today);
 
 } // namespace guitar::api

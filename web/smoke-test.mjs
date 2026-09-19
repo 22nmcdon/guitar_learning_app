@@ -338,6 +338,118 @@ try {
 
   await page.locator("#endQuiz").click();
 
+  // --- what the record remembers ---------------------------------------------
+  // The quiz above ran in standard tuning and was finished, so there is a
+  // session to find. Reloaded rather than read out of the same page: the point
+  // of a record is that it survives the visit that made it.
+  await page.reload({ waitUntil: "load" });
+  await page.waitForFunction(() =>
+    document.getElementById("engineStatus")?.dataset.state === "ready", null, { timeout: 30000 });
+
+  await page.locator("#modeFretboard").click();
+  await page.waitForFunction(() =>
+    document.getElementById("progressLine").textContent.includes("session"));
+
+  const record = await page.locator("#progressLine").innerText();
+  check(`the record survives a reload (${record.slice(0, 54)}...)`,
+    record.includes("session") && record.includes("questions"));
+
+  await page.locator("#showKnown").check();
+  await page.waitForTimeout(150);
+
+  const painted = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("#neck .dot[data-known]")).map((dot) => dot.dataset.known));
+
+  check(`what is known is painted on the neck (${painted.join(", ") || "nothing"})`,
+    painted.length >= 2 && painted.every((band) => ["sure", "solid", "mixed", "shaky"].includes(band)));
+
+  // Knowledge is per tuning, because the same fret is a different note in each.
+  await page.locator("#tuning").selectOption("drop-d");
+  await page.waitForFunction(() =>
+    document.querySelectorAll("#neck .dot[data-known]").length === 0);
+
+  // The session count is one learner's and stays; what empties is the map, and
+  // the line says so rather than pretending the history is gone.
+  const otherTuning = await page.locator("#progressLine").innerText();
+  check(`a record of one tuning says nothing about another (${otherTuning.slice(-34).trim()})`,
+    (await page.locator("#neck .dot[data-known]").count()) === 0
+    && otherTuning.includes("0 of its"));
+
+  await page.locator("#tuning").selectOption("standard");
+  await page.waitForFunction(() =>
+    document.querySelectorAll("#neck .dot[data-known]").length > 0);
+
+  check("and comes back when the tuning does",
+    (await page.locator("#neck .dot[data-known]").count()) >= 2);
+
+  // Forgetting is a real button that really destroys it, and it asks first.
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator("#forgetProgress").click();
+  await page.waitForFunction(() =>
+    document.getElementById("progressLine").textContent.includes("Nothing yet"));
+
+  check("forgetting the record forgets it",
+    (await page.locator("#neck .dot[data-known]").count()) === 0
+    && (await page.evaluate(() => localStorage.getItem("guitarProgress"))) === null);
+
+  // --- other instruments -----------------------------------------------------
+  await page.locator("#modeChords").click();
+  await page.locator("#tuning").selectOption("bass");
+  await page.waitForFunction(() => document.querySelectorAll("#neck .neck-row").length === 4);
+
+  check("a bass is four strings, and gets shapes like anything else",
+    (await page.locator("#neck .neck-row").count()) === 4
+    && (await page.locator("#voicingStrings tbody tr").count()) === 4);
+
+  await page.locator("#tuning").selectOption("seven-string");
+  await page.waitForFunction(() => document.querySelectorAll("#neck .neck-row").length === 7);
+
+  const sevenShape = await shapeOnNeck();
+  check(`a seven-string is seven (${sevenShape.slice(0, 40)}...)`,
+    (await page.locator("#neck .neck-row").count()) === 7 && sevenShape.length > 0);
+
+  await page.locator("#tuning").selectOption("standard");
+  await page.waitForFunction(() => document.querySelectorAll("#neck .neck-row").length === 6);
+
+  // --- the other way round ---------------------------------------------------
+  const firstCellRight = await page.evaluate(() =>
+    document.querySelector('#neck .neck-row[data-string="0"] button')?.dataset.fret);
+
+  await page.locator("#hand").selectOption("left");
+  await page.waitForFunction(() =>
+    document.querySelector('#neck .neck-row[data-string="0"] button')?.dataset.fret === "12");
+
+  const firstCellLeft = await page.evaluate(() =>
+    document.querySelector('#neck .neck-row[data-string="0"] button')?.dataset.fret);
+
+  check(`a left-handed neck runs the other way (nut at ${firstCellRight} -> ${firstCellLeft})`,
+    firstCellRight === "0" && firstCellLeft === "12");
+
+  check("and the fret numbers turn round with it",
+    (await page.evaluate(() =>
+      document.querySelector("#fretNumbers span")?.textContent)) === "12");
+
+  // Mirrored with a transform, the note names would be mirrored too, which is
+  // the reason this is done by reordering cells instead.
+  check("the note names are not mirrored",
+    await page.evaluate(() => {
+      const dot = document.querySelector("#neck .dot");
+      return !dot || getComputedStyle(dot).transform.indexOf("-1") === -1;
+    }));
+
+  const leftHandShape = await shapeOnNeck();
+  check(`the chord is still the same chord (${leftHandShape.slice(0, 30)}...)`,
+    leftHandShape.includes("1:3:R"));
+
+  await page.reload({ waitUntil: "load" });
+  await page.waitForFunction(() =>
+    document.getElementById("engineStatus")?.dataset.state === "ready", null, { timeout: 30000 });
+
+  check("and which way round you play is remembered",
+    (await page.evaluate(() => document.body.dataset.hand)) === "left");
+
+  await page.locator("#hand").selectOption("right");
+
   // --- a different tuning ----------------------------------------------------
   await page.locator("#modeChords").click();
   await page.locator("#tuning").selectOption("drop-d");

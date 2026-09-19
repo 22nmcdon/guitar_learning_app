@@ -10,6 +10,7 @@ add_executable(guitar_core_tests
     ChordSymbolTests.cpp
     ChordShapesTests.cpp
     ShapeIdentifierTests.cpp
+    ProgressTests.cpp
     FretboardQuizTests.cpp
     EngineApiTests.cpp)
 

@@ -27,10 +27,59 @@ written, and the summary is the only thing that ever wanted one.
 
 ## Questions are not a uniform sample
 
-The pool is weighted: a place that has already caught someone out is three times
-as likely to come back per miss, and the same place is never asked about twice
-running. The point is not to cover the neck evenly. It is to find the four frets
-somebody does not know and keep returning to them.
+The pool is weighted by two things that stack: what the learner got wrong in the
+last ten minutes, and what they have been getting wrong for a fortnight. The
+same place is never asked about twice running. The point is not to cover the
+neck evenly - it is to find the four frets somebody does not know and keep
+returning to them.
+
+## The record between sessions
+
+`Progress` is a learner's history: per place, per tuning, how often it was
+asked, how often it was right, how long the current run of right answers is, and
+the day it was last seen.
+
+**The engine stores none of it.** It is handed the record at `start`, hands an
+updated one back from `finish`, and forgets. Where the bytes live is the shell's
+business - the page keeps the string in browser storage and passes it back next
+time. That split is the same one as everywhere else here: deciding that the 7th
+fret of the 5th string is due again is pedagogy, and writing a string to disk is
+not.
+
+It is **per tuning** because a fret is a different note in each. Knowing where
+everything is in standard tells you nothing about DADGAD, and a record that
+pooled them would be confidently wrong about both. The session count and the
+lifetime totals are one learner's and span every tuning; the map and the
+weighting are not.
+
+Three numbers shape the weighting, and their *sizes* matter more than the shape:
+
+```
+weight = clamp(6 + 8 x misses - min(6, 2 x streak) + min(12, days since), 1, 60)
+```
+
+The confidence term is capped below the base deliberately. It was not, at first:
+a run of five right answers subtracted more than the base was worth, the sum hit
+the floor, and a mastered place then sat on the floor for ever - the decay term
+underneath it could never lift it off. Capped, the same place comes back after a
+fortnight, which is the entire reason for keeping a record at all.
+
+A place never asked about weighs 6: worth showing, and never ahead of a fret
+that has been missed three times.
+
+`strengthFor` is the same record read the other way, as 0-100 for painting the
+neck. Confidence is capped at "known" and the fade is applied *after* that
+rather than into the same sum - otherwise a long streak banks enough credit to
+swallow the fade whole, and a place last seen in March is still painted as solid
+in June.
+
+## What is not recorded
+
+A quiz that was opened and walked away from. The session is counted on the first
+answer, not on the start, because a count somebody reads as "days I practised"
+should not include the days they opened the page and made tea. `finish` still
+hands back the history unchanged in that case, so a shell can store the result
+unconditionally without ever wiping one by opening a quiz.
 
 ## The four kinds
 
@@ -66,4 +115,11 @@ different:
 Numbers go in it too, but "78%" is a fact about a quiz and "the fifth string is
 where this falls down" is a fact about the player. Each observation has a floor
 under it - a string asked about twice says nothing about that string - so the
-summary stays quiet rather than inventing a pattern out of four questions.
+summary stays quiet rather than inventing a pattern out of four questions. Four
+observations is the cap, because four is as many as anyone reads.
+
+Once there is a history, two more become possible and neither is worth saying
+without one: how many of today's questions were places missed last time, and how
+today compares with the accuracy across every session. Both are held back on a
+first visit, where they would be statements about a single run dressed up as
+history.

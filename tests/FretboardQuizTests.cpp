@@ -1,6 +1,7 @@
 #include "TestFramework.h"
 
 #include "guitar/core/FretboardQuiz.h"
+#include "guitar/core/Progress.h"
 
 #include <algorithm>
 
@@ -436,6 +437,196 @@ TEST ("a place that caught someone out comes back")
     }
 
     CHECK (seenAgain >= 1);
+}
+
+//==============================================================================
+// What one run knows about the ones before it.
+
+namespace
+{
+    /** Runs a quiz of @p count questions, getting everything right, and hands
+        back what the shell would store. */
+    std::string runQuiz (const std::string& progressText, int day, unsigned seed, int count,
+                         bool answerRight = true)
+    {
+        QuizOptions options = nameNotes (seed);
+        options.progressText = progressText;
+        options.today = day;
+
+        FretboardQuiz quiz;
+        auto question = quiz.start (options);
+
+        for (auto i = 0; i < count; ++i)
+        {
+            quiz.answer (answerRight ? rightAnswer (question) : std::string ("H"));
+            question = quiz.nextQuestion();
+        }
+
+        return quiz.finish().progressText;
+    }
+}
+
+TEST ("what one run wrote down, the next one reads")
+{
+    const auto first = runQuiz ({}, 500, 31, 6);
+    CHECK (first.find ("guitar-progress") == 0);
+
+    QuizOptions options = nameNotes (32);
+    options.progressText = first;
+    options.today = 501;
+
+    FretboardQuiz quiz;
+    auto question = quiz.start (options);
+    quiz.answer (rightAnswer (question));
+
+    const auto summary = quiz.finish();
+
+    CHECK_EQ (summary.sessions, 2);
+    CHECK_EQ (summary.lifetimeAsked, 7);
+    CHECK_EQ (summary.daysSinceLastSession, 1);
+}
+
+TEST ("a quiz that was opened and walked away from is not a session")
+{
+    const auto first = runQuiz ({}, 500, 33, 4);
+
+    QuizOptions options = nameNotes (34);
+    options.progressText = first;
+    options.today = 501;
+
+    FretboardQuiz quiz;
+    quiz.start (options);
+    const auto summary = quiz.finish();   // no answers at all
+
+    CHECK_EQ (summary.asked, 0);
+    CHECK_EQ (summary.sessions, 1);
+    CHECK_EQ (summary.lifetimeAsked, 4);
+
+    // And what comes back is still the history, so a shell that stores it
+    // unconditionally does not wipe one by opening a quiz.
+    CHECK (summary.progressText.find ("guitar-progress") == 0);
+}
+
+TEST ("a place missed a fortnight ago comes back")
+{
+    // The whole reason for keeping a record between sessions. Built by hand
+    // rather than by running a quiz, so the test says what it means.
+    Progress history;
+
+    for (auto i = 0; i < 3; ++i)
+        history.record ("standard", { 3, 4 }, false, 480);
+
+    for (auto string = 0; string < 6; ++string)
+        for (auto fret = 0; fret <= 5; ++fret)
+            if (! (string == 3 && fret == 4))
+                for (auto i = 0; i < 3; ++i)
+                    history.record ("standard", { string, fret }, true, 480);
+
+    QuizOptions options = nameNotes (41);
+    options.progressText = history.toText();
+    options.today = 494;
+
+    FretboardQuiz quiz;
+    auto question = quiz.start (options);
+    auto sawTheWeakOne = 0;
+
+    for (auto i = 0; i < 24; ++i)
+    {
+        if (question.position == Position { 3, 4 })
+            ++sawTheWeakOne;
+
+        quiz.answer (rightAnswer (question));
+        question = quiz.nextQuestion();
+    }
+
+    // One place out of 36, so chance would give it to us well under twice.
+    CHECK (sawTheWeakOne >= 2);
+}
+
+TEST ("a history of another tuning says nothing about this one")
+{
+    Progress history;
+
+    for (auto i = 0; i < 5; ++i)
+        history.record ("drop-d", { 0, 3 }, false, 100);
+
+    QuizOptions options = nameNotes (43);
+    options.progressText = history.toText();
+    options.today = 100;
+
+    FretboardQuiz quiz;
+    auto question = quiz.start (options);
+    quiz.answer (rightAnswer (question));
+
+    const auto summary = quiz.finish();
+
+    // The drop-D record is still carried - it is one learner's history, not one
+    // tuning's - but nothing in it is a weakness of the neck being played.
+    CHECK_EQ (summary.lifetimeAsked, 6);
+
+    for (const auto& spot : summary.weakSpots)
+        CHECK (! (spot.string == 0 && spot.fret == 3 && spot.strength == 0));
+}
+
+TEST ("the summary says what today was against every day before it")
+{
+    auto history = runQuiz ({}, 400, 51, 12, false);   // a bad first session
+    history = runQuiz (history, 401, 52, 12, false);
+    history = runQuiz (history, 402, 53, 12, false);
+
+    QuizOptions options = nameNotes (54);
+    options.progressText = history;
+    options.today = 403;
+
+    FretboardQuiz quiz;
+    auto question = quiz.start (options);
+
+    for (auto i = 0; i < 10; ++i)
+    {
+        quiz.answer (rightAnswer (question));   // a good one, for once
+        question = quiz.nextQuestion();
+    }
+
+    const auto summary = quiz.finish();
+    auto compared = false;
+    auto revisited = false;
+
+    for (const auto& observation : summary.observations)
+    {
+        if (observation.find ("up on the") != std::string::npos)
+            compared = true;
+
+        if (observation.find ("missed last time") != std::string::npos)
+            revisited = true;
+    }
+
+    CHECK (compared);
+    CHECK (revisited);
+    CHECK (summary.observations.size() <= 4);
+}
+
+TEST ("the places still worth going back to come back named")
+{
+    const auto history = runQuiz ({}, 600, 61, 8, false);
+
+    QuizOptions options = nameNotes (62);
+    options.progressText = history;
+    options.today = 600;
+
+    FretboardQuiz quiz;
+    auto question = quiz.start (options);
+    quiz.answer (rightAnswer (question));
+
+    const auto summary = quiz.finish();
+
+    CHECK (! summary.weakSpots.empty());
+
+    for (const auto& spot : summary.weakSpots)
+    {
+        CHECK (spot.name.find ("string") != std::string::npos);
+        CHECK (spot.strength >= 0);
+        CHECK (spot.strength <= 100);
+    }
 }
 
 TEST ("an empty run says so rather than dividing by zero")

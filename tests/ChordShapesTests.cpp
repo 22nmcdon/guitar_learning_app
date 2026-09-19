@@ -118,7 +118,7 @@ TEST ("nothing offered needs a fifth finger or a longer arm")
                         }
                     }
 
-                    CHECK (fretted <= 6);
+                    CHECK (fretted <= static_cast<int> (shape.frets.size()));
                 }
             }
         }
@@ -322,6 +322,70 @@ TEST ("a difficulty is always given, and a barre is never called easy")
                 CHECK (shape.difficulty == "moderate" || shape.difficulty == "hard");
         }
     }
+}
+
+TEST ("a seven-string is six strings and one more, not a special case")
+{
+    const auto shapes = shapesFor ("E", "seven-string");
+    CHECK (! shapes.empty());
+
+    for (const auto& shape : shapes)
+        CHECK_EQ (static_cast<int> (shape.frets.size()), 7);
+
+    // The open E chord is where it always was, one string along.
+    CHECK (offers (shapes, { muted, 0, 2, 2, 1, 0, 0 }));
+}
+
+TEST ("a bass gets shapes too, on the strings it has")
+{
+    const auto shapes = shapesFor ("E", "bass");
+    CHECK (! shapes.empty());
+
+    for (const auto& shape : shapes)
+    {
+        CHECK_EQ (static_cast<int> (shape.frets.size()), 4);
+        CHECK (shape.fingersUsed <= 4);
+    }
+
+    CHECK (offers (shapes, { 0, 2, 2, 1 }));
+}
+
+TEST ("the CAGED letters follow the tuning, not the string number")
+{
+    // What "E shape" means is the grip that came from the open E chord, and
+    // that only exists where the strings above the root are tuned as a standard
+    // guitar's are. On a seven-string that string is the second one up.
+    auto seven = shapesFor ("F", "seven-string", ShapeSearch { 0, 12, 12, true, true, false });
+    auto barre = std::find_if (seven.begin(), seven.end(), [] (const ChordShape& shape)
+                               {
+                                   return shape.frets == std::vector<int> { muted, 1, 3, 3, 2, 1, 1 };
+                               });
+
+    CHECK (barre != seven.end());
+    CHECK (barre->name.find ("E-shape") != std::string::npos);
+
+    // Drop D moves one string, so the letters that do not involve it survive:
+    // an A-shape barre rooted on the A string is still an A-shape barre there.
+    // What cannot survive is a letter for a grip rooted on the string that
+    // moved - the string above it is now a fifth away rather than a fourth, so
+    // whatever that grip is, it is not the E shape.
+    auto dropped = shapesFor ("F", "drop-d", ShapeSearch { 0, 12, 12, true, true, false });
+    auto sawALetter = false;
+
+    for (const auto& shape : dropped)
+    {
+        if (shape.name.find ("-shape") == std::string::npos)
+            continue;
+
+        sawALetter = true;
+        CHECK (shape.frets.front() == muted);   // never rooted on the moved string
+    }
+
+    CHECK (sawALetter);
+
+    // CAGED is guitar vocabulary about six strings; a bass gets none of it.
+    for (const auto& shape : shapesFor ("F", "bass"))
+        CHECK (shape.name.find ("-shape") == std::string::npos);
 }
 
 TEST ("a chord nobody can play on six strings comes back with nothing rather than a lie")

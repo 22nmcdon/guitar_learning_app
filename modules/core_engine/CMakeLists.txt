@@ -12,7 +12,8 @@ add_library(guitar_core_engine STATIC
     src/ChordSymbol.cpp
     src/ChordShapes.cpp
     src/ShapeIdentifier.cpp
-    src/FretboardQuiz.cpp)
+    src/FretboardQuiz.cpp
+    src/Progress.cpp)
 
 add_library(guitar::core_engine ALIAS guitar_core_engine)
 

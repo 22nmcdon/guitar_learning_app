@@ -18,7 +18,7 @@ and frets rather than in MIDI notes that happen to be playable on a guitar.
 | `modules/engine_api` | The engine's answers as JSON - one wire format, read by both shells. Pure C++17. | core engine |
 | `web` | **The user interface.** One page, served on the web and hosted by the app, plus the WebAssembly build, the offline worker and the smoke test that drives the built page. | engine API (as JSON) |
 | `app` | Platform shell: a window with a webview showing `web/`. | engine API, JUCE |
-| `tests` | Engine unit tests (120), no JUCE, no third-party framework. | core engine, engine API |
+| `tests` | Engine unit tests (148), no JUCE, no third-party framework. | core engine, engine API |
 
 The core engine links no JUCE at all - that boundary is what keeps a future
 plugin or mobile target possible without a rewrite, and the build enforces it.
@@ -186,14 +186,53 @@ Each observation has a floor under it - a string asked about twice says nothing
 about that string - so it stays quiet rather than inventing a pattern out of
 four questions.
 
-### Tunings
+### Tunings, and other instruments
 
-Five, from the menu at the top: standard, drop D, half a step down, open G and
-DADGAD. Changing one redraws the neck, renames every fret and works the chord
-shapes out again from scratch. Nothing in the engine assumes standard tuning -
-open G really does give you a G chord with nothing fretted, and drop D really
-does put a power chord under one finger, because both fall out of the same
-search rather than being special cases.
+Eight, from the menu at the top, grouped by instrument: standard, drop D, half a
+step down, open G and DADGAD; a **seven-string**; and a four- and five-string
+**bass**. Changing one redraws the neck, renames every fret and works the chord
+shapes out again from scratch.
+
+Nothing in the engine assumes standard tuning, and nothing assumes six strings
+either - a tuning is a list of open strings of any length, so a bass is the same
+code path with four of them. Open G really does give you a G chord with nothing
+fretted, drop D really does put a power chord under one finger, and the CAGED
+letters follow the tuning rather than the string number: on a seven-string the
+E shape is rooted on the *sixth* string, and in drop D the grip rooted on the
+string that moved gets no letter at all, because whatever it is it is not the
+E shape any more.
+
+### Left-handed
+
+A menu next to the tuning. The neck is redrawn the other way round - nut on the
+right, frets counting leftwards, string names on the right - and everything else
+is untouched, because which way round you hold the instrument is a fact about
+the drawing and not about the music. The cells are reordered rather than
+mirrored with a transform: a mirrored neck mirrors the note names written on it
+too.
+
+![The same C major, drawn for a left-handed player: nut on the right, frets counting leftwards](docs/screenshot-lefty.png)
+
+### It remembers
+
+Take a quiz, come back tomorrow, and the frets you missed come round again.
+
+Everything you answer is kept - per place, per tuning - and the quiz weights its
+questions by it: somewhere you have missed comes up often, somewhere you have
+had right five times running comes up rarely, and everything drifts back up as
+the days pass, because that is what forgetting is.
+
+**Show what you know** paints that record straight onto the neck, in four bands
+from *sure* to *shaky*, so the thing you are avoiding is visible rather than
+inferred.
+
+![The neck painted with a fortnight of practice: green where it is known, red where it is not](docs/screenshot-known.png) Underneath it: how many sessions, how many questions, how much of this
+neck you have seen at all, and which places are still worth going back to.
+
+The record lives in your browser and goes nowhere else. **Forget my progress**
+deletes it, and asks first. The engine itself stores nothing - it is handed the
+record, answers, and forgets - which is why the same history works in the
+desktop app and why none of it needed a server.
 
 ## Trying the engine in a browser
 
@@ -240,7 +279,11 @@ it against a chord that was asked for.
 summary in words. `docs/QUIZZES.md` covers why it lives in the engine and why
 the engine still has no clock.
 
-All of it is covered by 120 unit tests with no third-party test framework, none
+**The record** (`Progress`) - what a learner has shown they know, as a block of
+text the shell stores and hands back. The engine decides what it means and what
+to ask next; where the bytes live is the shell's business.
+
+All of it is covered by 148 unit tests with no third-party test framework, none
 of which need a GUI, a browser or a guitar.
 
 ## Not built yet
@@ -250,11 +293,10 @@ Deliberately open, rather than forgotten:
 - **Scales and arpeggios on the neck.** The obvious next thing, and the one
   place where it is not yet clear whether it is a third mode or an extension of
   chord practice.
-- **Anything remembered between sessions.** The quiz summary is per-run; the
-  engine stores nothing. The weighting would be much better if it did.
 - **A progression to play along with**, a metronome, strumming patterns.
-- **Seven-string, bass and left-handed.** All cheap in the engine - a tuning is
-  a list of any length - and all changes to how the page draws.
+- **A record that follows you between devices.** It is per browser, because
+  there is no account and no server here, and adding either is a much larger
+  decision than it looks.
 - **Audio input.** Listening to the guitar and telling you whether you played
   the shape is a different and much larger project (pitch detection over six
   simultaneous strings), and is out of scope on purpose.

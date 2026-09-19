@@ -15,8 +15,8 @@ A standalone, cross-platform guitar education app built on **JUCE**, targeting
 desktop (macOS/Windows) and mobile (iOS/Android) from one shared codebase. It has
 two modes over one neck: **chord practice** (a chord under your hand, and every
 other way of playing it) and **fretboard practice** (what the notes are, and
-quizzes on them). There is no keyboard anywhere in it - the fretboard is the
-instrument and the input device.
+quizzes on them, remembered between visits). There is no keyboard anywhere in it
+- the fretboard is the instrument and the input device.
 
 ## Architecture - Read Before Adding Code
 
@@ -24,7 +24,7 @@ Three layers, as separate modules. Do not blur this boundary.
 
 | Layer | Responsibility | May depend on |
 |---|---|---|
-| **Core Engine** | The fretboard, chord parsing, shape generation, shape reading, the quiz. Pure C++, no JUCE GUI. | Nothing platform-specific |
+| **Core Engine** | The fretboard, chord parsing, shape generation, shape reading, the quiz and what it remembers. Pure C++, no JUCE GUI. | Nothing platform-specific |
 | **Engine API** (`modules/engine_api`) | JSON wire format for every shell. Pure C++, no JUCE, no Emscripten. | Core Engine |
 | **User Interface** (`web/`) | The one interface (neck, panels, quiz), served on the web and hosted by the app. | Engine API |
 | **Platform Shell** (`app/`) | Webview hosting `web/`, and app lifecycle. | JUCE platform APIs |
@@ -58,6 +58,10 @@ CSS, not per-platform builds.
 - **The accent colour moves with the mode** (`--accent`, blush in chord
   practice, teal in fretboard practice) and the note colours do not: root, third
   and fifth mean the same thing in both.
+- **Left-handed is `data-hand` on the body and reordered cells** - never a CSS
+  transform. A mirrored neck mirrors the note names written on it.
+- **Nothing in the page hard-codes six strings.** Fret vectors come from
+  `silentNeck()`, which sizes itself from the board the engine handed over.
 
 ## Input Scope (Current Phase)
 
@@ -111,21 +115,39 @@ something finished or assume something unfinished is done:
   done.
 - **Fretboard practice** (note names, lighting up every place a note lives, four
   quizzes, weighted question selection, the summary) - done.
-- **Five tunings**, and nothing anywhere assumes standard - done.
+- **A record kept between sessions** (`Progress`), the weighting that reads it,
+  the "what you know" map and the forget button - done.
+- **Eight tunings** across guitar, seven-string and bass, and **left-handed
+  drawing** - done. Nothing anywhere assumes standard, or six strings.
 - **Not built, deliberately open**: scales and modes on the neck, arpeggio
   shapes, a chord progression to play along with, a metronome, strumming
-  patterns, left-handed drawing, seven-string and bass tunings, saving a
-  learner's history between sessions (the quiz summary is per-run and the engine
-  keeps nothing), audio input.
+  patterns, a record that follows a learner between devices (there is no account
+  and no server here, and adding either is a much larger decision than it
+  looks), audio input.
 
 ## Critical Invariants
 
 These aren't stylistic preferences - violating them breaks something in a way
 that's easy to miss in review:
 
-- **The engine has no clock and must never get one.** How long an answer took
-  and what to seed the shuffle with both arrive as data the shell computed. This
-  is what keeps `FretboardQuiz` testable.
+- **The engine has no clock and must never get one.** How long an answer took,
+  what to seed the shuffle with, and *what day it is* all arrive as data the
+  shell computed. The engine only ever subtracts two day numbers, which is the
+  most a thing with no clock can honestly do with a date. This is what keeps
+  `FretboardQuiz` testable.
+- **The engine stores nothing, and the shell reads nothing.** `Progress` is
+  handed in as text and handed back as text; the page keeps it in browser
+  storage and never parses it. A page that parsed it would be a second reader to
+  keep in step with the first. The format is versioned and anything unreadable
+  starts empty - it comes from storage a previous version of this app also wrote
+  to.
+- **A record is per tuning.** A fret is a different note in each, so knowing
+  standard says nothing about DADGAD. The session count and lifetime totals are
+  one learner's and span all of them; the map and the weighting are not.
+- **An abandoned quiz changes nothing.** The session is counted on the first
+  answer, not on `start`, and `finish` hands the history back unchanged - so a
+  shell can store the result unconditionally without wiping a record by opening
+  a quiz. `saveProgress` also refuses an empty string for the same reason.
 - **Strings are indexed from the lowest pitch, and only `Fretboard::stringName`
   knows that players count the other way.** See `docs/FRETBOARD.md`.
 - **`muted` is a value, not an absence.** Every `frets` vector has one entry per
@@ -137,7 +159,11 @@ that's easy to miss in review:
 - **`ChordShapesTests` holds two invariants that must survive any change to the
   generator**: every shape it offers must identify as the chord it was offered
   for, and none may need a fifth finger or a span no hand has. Both are cheap to
-  break and expensive to notice.
+  break and expensive to notice, and both run over every tuning - including the
+  bass and the seven-string.
+- **The CAGED letters come from the tuning's interval pattern, not the string
+  number.** Index 0 is not "the E shape": on a seven-string that is the low B.
+  See `docs/CHORD_SHAPES.md`.
 - **A wider chord vocabulary is not automatically better.** `identifyShape`
   scores every quality against the notes played, so a new name competes with all
   the rest - an open C is also a rootless Am7 and a rootless F6, and both of
@@ -166,11 +192,12 @@ that's easy to miss in review:
 
 - Should scales and arpeggios get their own mode, or extend chord practice? They
   are the obvious next thing and the two answers lead to different UIs.
-- Is a learner's history worth keeping between sessions? Nothing in the engine
-  stores anything today, and the quiz's weighting would be much better if it did.
-- Seven-string, bass and left-handed: all cheap in the engine (a `Tuning` is a
-  list of any length) and all changes to the page's drawing. Worth doing now, or
-  when someone asks?
+- The record is per browser. Following a learner between devices needs an
+  account and a server, which this project has never had - and the first one of
+  those is a much larger decision than the feature that wants it.
+- Should the record do anything for chord practice? It only informs the quiz
+  today, and "the shapes you keep coming back to" is a different and less
+  obviously useful thing to measure than "the frets you cannot name".
 
 If work touches one of these, flag the ambiguity rather than silently picking a
 direction.
@@ -187,4 +214,5 @@ direction.
   side is wrong before changing either.
 - **Look at the page, don't just run the smoke test.** The neck rendered as
   stripes and its fret numbers stacked in two columns while all 41 checks passed,
-  because nothing was asserting on what it looked like. Screenshot it.
+  because nothing was asserting on what it looked like. The inlay dots sat a
+  string low on every neck for the same reason. Screenshot it.
