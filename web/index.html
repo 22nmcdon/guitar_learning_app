@@ -209,6 +209,15 @@ body.in-app .masthead h1 { font-size: 22px; }
   color: var(--paper);
 }
 
+/* The same segmented control as the mode switch, at the size of a caption. Two
+   answers to one question is what that control is for, whether the question is
+   which mode you are in or what the dots are telling you. */
+.modes.small button {
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  padding: 5px 12px;
+}
+
 select, .field {
   font-family: inherit;
   font-size: 13px;
@@ -844,6 +853,14 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
             <input type="checkbox" id="simpleOnly"> easy shapes only
           </label>
         </div>
+
+        <div class="row tight" style="margin-top:12px">
+          <span style="font-size:13px;color:var(--text-soft)">On the dots</span>
+          <div class="modes small" role="group" aria-label="What the dots on the neck say">
+            <button type="button" id="labelDegrees" aria-pressed="true">Degrees</button>
+            <button type="button" id="labelFingers" aria-pressed="false">Fingers</button>
+          </div>
+        </div>
       </section>
 
       <section class="card">
@@ -1001,6 +1018,10 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
     <p>Pick a chord on the left and the first shape appears under your hand. <b>Try another
        voicing</b> walks along the neck rather than nudging one finger: the second answer is a
        different place to play the same chord, not the same place with a string muted.</p>
+    <p><b>On the dots</b> switches what is written on them: which note of the chord each one
+       is, or which finger goes on it. The colours do not change with it - red is the root
+       whichever number is showing - so a barre chord in <i>fingers</i> still tells you that
+       the two notes under your index finger are the root and the fifth.</p>
     <div class="key">
       <span><i style="background:var(--root)"></i>root</span>
       <span><i style="background:var(--third)"></i>third</span>
@@ -1146,6 +1167,8 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
     shapes: [],
     shapeIndex: 0,
     simpleOnly: false,
+    dotLabel: "degrees",     // what a suggested shape writes on its dots
+
     held: [],                // what the learner has fretted; as long as the tuning has strings
     holding: false,          // true once they have touched the neck themselves
     showNames: true,
@@ -1171,6 +1194,7 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
    "roots", "qualities", "chordTitle", "chordSummary", "chordNotes",
    "voicingName", "voicingLevel", "voicingNote", "voicingStrings", "voicingOmitted",
    "voicingCount", "anotherVoicing", "previousVoicing", "hearChord", "simpleOnly",
+   "labelDegrees", "labelFingers",
    "reading", "readingVerdict", "readingDetail", "readingAlternates",
    "clearShape", "checkAgainst", "checkChord",
    "showNames", "namesOff", "showKnown", "knownPanel", "lightNote", "clearLit", "litSummary",
@@ -1527,7 +1551,19 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
       }
 
       var degree = shape.degrees[string] || "";
-      var label = degree || prettyNote(shape.noteNames[string] || "");
+
+      /* Two things a dot can say, and they answer different questions: which
+         note of the chord this is, and which finger goes on it. A learner
+         wants the first when they are trying to understand a shape and the
+         second when they are trying to play it, and asking them to hold both
+         in one label is how a diagram becomes unreadable.
+
+         The colour does not change with the choice. Red still means the root
+         whichever number is written on it - that is the same rule as the two
+         practice modes sharing their note colours. */
+      var label = state.dotLabel === "fingers"
+        ? (fret === 0 ? "0" : String(shape.fingers[string]))
+        : (degree || prettyNote(shape.noteNames[string] || ""));
 
       mark(string, fret, label, {
         degree: degree,
@@ -1768,6 +1804,11 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
 
     state.holding = false;
     paintNeck();
+  }
+
+  function applyDotLabel() {
+    el.labelDegrees.setAttribute("aria-pressed", state.dotLabel === "degrees" ? "true" : "false");
+    el.labelFingers.setAttribute("aria-pressed", state.dotLabel === "fingers" ? "true" : "false");
   }
 
   function stepShape(by) {
@@ -2360,6 +2401,15 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
                               : (state.shapes[state.shapeIndex] ? state.shapes[state.shapeIndex].frets : null);
     if (frets) strum(frets);
   });
+  [["degrees", el.labelDegrees], ["fingers", el.labelFingers]].forEach(function (choice) {
+    choice[1].addEventListener("click", function () {
+      state.dotLabel = choice[0];
+      remember("guitarDotLabel", state.dotLabel);
+      applyDotLabel();
+      paintNeck();
+    });
+  });
+
   el.simpleOnly.addEventListener("change", function () {
     state.simpleOnly = el.simpleOnly.checked;
     loadShapes();
@@ -2470,6 +2520,8 @@ dialog .close-row { display: flex; justify-content: flex-end; margin-top: 16px; 
     document.body.dataset.hand = state.hand;
     el.hand.value = state.hand;
     state.tuning = recall("guitarTuning", "standard");
+    state.dotLabel = recall("guitarDotLabel", "degrees") === "fingers" ? "fingers" : "degrees";
+    applyDotLabel();
 
     await loadBoard();
     await loadCatalogues();

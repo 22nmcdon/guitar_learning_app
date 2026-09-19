@@ -173,6 +173,56 @@ try {
       return starts.length >= 8 && starts[starts.length - 1] - starts[0] > 0.05;
     }));
 
+  // --- what the dots say -----------------------------------------------------
+  const degreeLabels = await shapeOnNeck();
+  await page.locator("#labelFingers").click();
+  await page.waitForFunction(() =>
+    document.querySelector("#neck .dot:not(.muted-mark)")?.textContent.match(/^[0-4]$/));
+
+  const fingerLabels = await shapeOnNeck();
+
+  check(`the dots can say fingers instead of degrees (${degreeLabels.slice(0, 26)}... -> `
+      + `${fingerLabels.slice(0, 26)}...)`,
+    degreeLabels.includes(":R") && !fingerLabels.includes(":R")
+    && /\d:\d+:[0-4]/.test(fingerLabels));
+
+  // The dot is in the same place and still the same colour: which note of the
+  // chord it is does not change with what is written on it.
+  check("and the fingering is the one the table gives",
+    await page.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll("#voicingStrings tbody tr"));
+      return rows.every((row) => {
+        const cells = Array.from(row.children).map((cell) => cell.textContent.trim());
+        const [, fret, finger] = cells;
+
+        if (fret === "muted") return true;
+
+        const string = 6 - Number(cells[0].replace(/\D/g, ""));
+        const dot = document.querySelector(
+          `#neck [data-string="${string}"][data-fret="${fret === "open" ? 0 : fret}"] .dot`);
+
+        return dot && dot.textContent === (fret === "open" ? "0" : finger);
+      });
+    }));
+
+  check("the root is still red whatever is written on it",
+    (await page.evaluate(() =>
+      document.querySelectorAll('#neck .dot[data-degree="R"]').length)) >= 1);
+
+  await page.reload({ waitUntil: "load" });
+  await page.waitForFunction(() =>
+    document.getElementById("engineStatus")?.dataset.state === "ready", null, { timeout: 30000 });
+
+  check("and the choice is remembered",
+    (await page.locator("#labelFingers").getAttribute("aria-pressed")) === "true"
+    && /\d:\d+:[0-4]/.test(await shapeOnNeck()));
+
+  await page.locator("#labelDegrees").click();
+  await page.waitForFunction(() =>
+    document.querySelector('#neck .dot[data-degree="R"]')?.textContent === "R");
+
+  check("degrees come back", (await shapeOnNeck()).includes(":R"));
+
   // --- changing the shape yourself -------------------------------------------
   // The first tap takes the neck over from the suggestion and starts from it,
   // so this is a learner nudging one finger rather than building from silence.

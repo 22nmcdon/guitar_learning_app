@@ -101,6 +101,12 @@ barre at the eighth, a triad up at the tenth, and several voicings in between.
 For `F#m7b5` in DADGAD you get whatever that tuning makes possible, worked out
 from the same rules; nothing here was written down for any particular chord.
 
+**On the dots** switches what each one says: the degree of the chord it is
+sounding, or the finger that goes on it. The colours stay put either way - red
+is the root whichever number is written on it - so the fingering view still
+tells you that the two notes under your index finger on a barre are the root and
+the fifth. The choice is remembered.
+
 Every shape is named for what it is - *Open position*, *E-shape barre, 5th
 fret*, *Shell voicing, 8th fret*, *Movable shape, 7th fret (over G)* - and the
 name is read off the shape rather than looked up. A barre chord is drawn with a
