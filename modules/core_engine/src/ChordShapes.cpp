@@ -71,7 +71,7 @@ namespace
         bool hasOpen {};
     };
 
-    Examined examine (const std::vector<int>& frets)
+    Examined examine (const std::vector<int>& frets, int capo)
     {
         Examined result;
         result.fingers.assign (frets.size(), muted);
@@ -86,7 +86,9 @@ namespace
 
             soundedStrings.push_back (static_cast<int> (string));
 
-            if (frets[string] == 0)
+            // "Open" means held by the nut or by the capo: either way it is a
+            // string that sounds without a finger on it.
+            if (frets[string] == capo)
             {
                 result.hasOpen = true;
                 result.fingers[string] = 0;
@@ -305,8 +307,11 @@ std::vector<ChordShape> chordShapes (const Chord& chord, const Tuning& tuning, c
     const auto chordNotes = chord.pitchClasses();
     const auto wantedBass = chord.bass.value_or (chord.root);
 
-    const auto lowestFret = std::max (0, search.fromFret);
-    const auto topFret = std::min (search.toFret, highestFret);
+    // Everything below a capo is out of play, so the search starts there and
+    // the capo's own fret is what "open" means for the rest of this function.
+    const auto capo = std::max (0, std::min (search.capo, highestFret - handSpan));
+    const auto lowestFret = std::max (capo, search.fromFret);
+    const auto topFret = std::min (std::max (search.toFret, capo + handSpan), highestFret);
 
     // A power chord is two notes and is allowed to be; everything else needs at
     // least three sounding, or it is an interval rather than a chord.
@@ -335,12 +340,12 @@ std::vector<ChordShape> chordShapes (const Chord& chord, const Tuning& tuning, c
             auto& perString = choices[static_cast<std::size_t> (string)];
             perString.push_back (muted);
 
-            const auto openNote = board.noteAt (string, 0);
+            const auto openNote = board.noteAt (string, capo);
 
-            if (window <= 4 && lowestFret == 0 && contains (chordNotes, toPitchClass (openNote)))
-                perString.push_back (0);
+            if (window <= capo + 4 && lowestFret == capo && contains (chordNotes, toPitchClass (openNote)))
+                perString.push_back (capo);
 
-            for (auto fret = std::max (1, window); fret <= std::min (window + handSpan, topFret); ++fret)
+            for (auto fret = std::max (capo + 1, window); fret <= std::min (window + handSpan, topFret); ++fret)
                 if (contains (chordNotes, toPitchClass (board.noteAt (string, fret))))
                     perString.push_back (fret);
         }
@@ -390,7 +395,7 @@ std::vector<ChordShape> chordShapes (const Chord& chord, const Tuning& tuning, c
                 if (! bassIsWanted && (! search.allowInversions || chord.bass.has_value()))
                     return;
 
-                auto examined = examine (frets);
+                auto examined = examine (frets, capo);
 
                 if (! examined.playable || examined.innerMutes > 1)
                     return;
@@ -405,6 +410,7 @@ std::vector<ChordShape> chordShapes (const Chord& chord, const Tuning& tuning, c
                     return;
 
                 ChordShape shape;
+                shape.capo = capo;
                 shape.frets = frets;
                 shape.fingers = examined.fingers;
                 shape.baseFret = examined.baseFret;
@@ -418,7 +424,9 @@ std::vector<ChordShape> chordShapes (const Chord& chord, const Tuning& tuning, c
                 shape.highestNote = highestNote;
                 shape.rootInBass = toPitchClass (lowestNote) == chord.root;
                 shape.hasOpenStrings = examined.hasOpen;
-                shape.bassNote = midiNoteName (lowestNote);
+                // Spelled by the chord, like every other name it carries: a
+                // shape of Bb7 has a Bb at the bottom, not an A#.
+                shape.bassNote = chord.spelledMidiNote (lowestNote);
 
                 for (std::size_t s = 0; s < frets.size(); ++s)
                 {
@@ -443,7 +451,10 @@ std::vector<ChordShape> chordShapes (const Chord& chord, const Tuning& tuning, c
                 const auto bassString = static_cast<int> (std::distance (frets.begin(),
                     std::find_if (frets.begin(), frets.end(), [] (int f) { return f != muted; })));
 
-                const auto movedUp = pitchClassName (chord.root + 2) + chord.quality.suffix;
+                const auto movedUp = pitchClassName (chord.root + 2,
+                                                     chord.rootSpelling.alteration < 0 ? Accidental::flats
+                                                                                       : Accidental::sharps)
+                                   + chord.quality.suffix;
 
                 if (examined.barreFret > 0)
                 {
@@ -452,11 +463,23 @@ std::vector<ChordShape> chordShapes (const Chord& chord, const Tuning& tuning, c
                     shape.note = "One grip, and it moves: the same shape two frets up is "
                                + movedUp + ".";
                 }
-                else if (examined.hasOpen && examined.baseFret <= 3)
+                else if (examined.hasOpen && examined.baseFret - capo <= 3)
                 {
-                    shape.name = "Open position";
-                    shape.note = "Open strings ring longer than fretted ones. This is the sound "
-                                 "the instrument was designed around - and it does not move.";
+                    shape.name = capo > 0 ? "Open position, at the capo" : "Open position";
+
+                    /* The whole reason anybody owns a capo: the grip is one you
+                       already know, and it is the grip for the chord this one
+                       would have been without the capo. Naming that chord is
+                       naming the shape - "with the capo at 3, this is your C
+                       shape" - and it is a subtraction, not a lookup. */
+                    shape.note = capo > 0
+                        ? "With the capo at " + std::to_string (capo) + ", this is your "
+                            + pitchClassName (chord.root - capo,
+                                              chord.rootSpelling.alteration < 0 ? Accidental::flats
+                                                                                : Accidental::sharps)
+                            + chord.quality.suffix + " shape."
+                        : "Open strings ring longer than fretted ones. This is the sound "
+                          "the instrument was designed around - and it does not move.";
                 }
                 else if (soundedCount <= 3)
                 {
@@ -489,8 +512,8 @@ std::vector<ChordShape> chordShapes (const Chord& chord, const Tuning& tuning, c
 
                 if (! shape.rootInBass)
                 {
-                    shape.name += " (over " + pitchClassName (toPitchClass (lowestNote)) + ")";
-                    shape.note = "An inversion: " + pitchClassName (toPitchClass (lowestNote))
+                    shape.name += " (over " + chord.spelledPitchClass (toPitchClass (lowestNote)) + ")";
+                    shape.note = "An inversion: " + chord.spelledPitchClass (toPitchClass (lowestNote))
                                + " is at the bottom rather than the root. Useful when the bass "
                                  "is walking and you are not.";
                 }
@@ -522,7 +545,7 @@ std::vector<ChordShape> chordShapes (const Chord& chord, const Tuning& tuning, c
                    with the string fretted is the one worth learning. */
                 score += 4 * soundedCount;
                 score += 5 * static_cast<int> (distinct.size());
-                score -= 2 * examined.baseFret;
+                score -= 2 * (examined.baseFret - capo);
                 score -= 2 * examined.fingersUsed;
                 score -= 2 * examined.span;
 
@@ -534,7 +557,10 @@ std::vector<ChordShape> chordShapes (const Chord& chord, const Tuning& tuning, c
                 score -= 25 * examined.innerMutes;
 
                 if (examined.hasOpen)
-                    score += examined.baseFret <= 2 ? 22 : (examined.baseFret <= 4 ? -14 : -22);
+                {
+                    const auto above = examined.baseFret - capo;
+                    score += above <= 2 ? 22 : (above <= 4 ? -14 : -22);
+                }
 
                 // The same note twice at the same pitch is a real guitar sound
                 // and a poor first answer: it spends a string saying something

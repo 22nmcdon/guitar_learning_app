@@ -2,12 +2,14 @@
 
 Guidance for Claude Code (or any Claude instance) working in this repository.
 
-For **what the app does and how each feature behaves**, see `README.md`. For the
-coordinate system every part of the engine reads the neck through, see
-`docs/FRETBOARD.md`; for how voicings are found and ranked, `docs/CHORD_SHAPES.md`;
-for the quiz, `docs/QUIZZES.md`. Read the relevant one before touching
-`ChordShapes.cpp`, `FretboardQuiz.cpp` or anything that counts strings. This file
-is only for what you need to not break the repo or redo settled work.
+For **what the app does and how each feature behaves**, see `README.md`; for how
+to work on it, `CONTRIBUTING.md`. For the coordinate system every part of the
+engine reads the neck through, see `docs/FRETBOARD.md`; for how voicings are
+found and ranked, `docs/CHORD_SHAPES.md`; for the quiz, `docs/QUIZZES.md`; for
+how a note gets its name, `docs/SPELLING.md`. Read the relevant one before
+touching `ChordShapes.cpp`, `FretboardQuiz.cpp`, anything that counts strings or
+anything that names a note. This file is only for what you need to not break the
+repo or redo settled work.
 
 ## Project Overview
 
@@ -62,6 +64,14 @@ CSS, not per-platform builds.
   transform. A mirrored neck mirrors the note names written on it.
 - **Nothing in the page hard-codes six strings.** Fret vectors come from
   `silentNeck()`, which sizes itself from the board the engine handed over.
+- **Nothing means anything by colour alone.** Root/third/fifth are red, green
+  and gold and the record's bands run green to red - the one pair of hues that
+  does not survive colour blindness. The root wears a ring, the four bands have
+  four different fills and outlines, and every dot carries its meaning in words
+  through `title` and the cell's `aria-label`.
+- **The neck is one tab stop with arrow keys inside it** (a roving tabindex),
+  not seventy-eight tab stops. Anything that changes without moving the focus
+  goes through `announce()` into the live region.
 
 ## Input Scope (Current Phase)
 
@@ -119,6 +129,11 @@ something finished or assume something unfinished is done:
   the "what you know" map and the forget button - done.
 - **Eight tunings** across guitar, seven-string and bass, and **left-handed
   drawing** - done. Nothing anywhere assumes standard, or six strings.
+- **Capo**, **proper note spelling**, **keyboard and screen-reader access to the
+  neck**, and the **installable page** (manifest, icons, offline) - done.
+- **Project hygiene**: `CONTRIBUTING.md` (the invariants as a checklist),
+  `CHANGELOG.md`, semver tags. No licence, by decision - the repository is
+  public and unlicensed on purpose until that call is made.
 - **Not built, deliberately open**: scales and modes on the neck, arpeggio
   shapes, a chord progression to play along with, a metronome, strumming
   patterns, a record that follows a learner between devices (there is no account
@@ -164,6 +179,13 @@ that's easy to miss in review:
 - **The CAGED letters come from the tuning's interval pattern, not the string
   number.** Index 0 is not "the E shape": on a seven-string that is the low B.
   See `docs/CHORD_SHAPES.md`.
+- **A chord is spelled from its root's letter, one letter per degree.** Never
+  name a note in chord context with `pitchClassName`; ask the `Chord`
+  (`spelledNote`, `spelledPitchClass`, `spelledMidiNote`). A Bb7 whose notes
+  read A#, D, F, G# is the bug this replaced. See `docs/SPELLING.md`.
+- **A capo is a new nut, and it belongs to chord practice.** The engine treats
+  fret `capo` as open and refuses anything below it; the page draws it only in
+  chord mode, because the quiz and the record are about the real neck.
 - **A wider chord vocabulary is not automatically better.** `identifyShape`
   scores every quality against the notes played, so a new name competes with all
   the rest - an open C is also a rootless Am7 and a rootless F6, and both of
@@ -212,6 +234,10 @@ direction.
 - **A failing test is a question, not a chore.** Several tests here encoded my
   assumption rather than correct behaviour and had to be corrected - check which
   side is wrong before changing either.
+- **There is no visual regression suite.** The smoke test drives the DOM, which
+  is why the neck could render as stripes with every check green. Image
+  snapshots would catch that class of bug and need a pinned browser container to
+  not be flaky across machines - the pinning is the work, not the assertions.
 - **Look at the page, don't just run the smoke test.** The neck rendered as
   stripes and its fret numbers stacked in two columns while all 41 checks passed,
   because nothing was asserting on what it looked like. The inlay dots sat a

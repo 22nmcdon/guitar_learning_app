@@ -29,6 +29,16 @@ std::string tunings();
 /** Every chord quality the engine can read and build, grouped for a menu. */
 std::string chordQualities();
 
+/** The twelve roots, with both names of the five that have two and the one a
+    chord on that root is normally written with.
+
+    A page that built its own twelve buttons would have to choose between D
+    sharp and E flat, and whichever it chose would be wrong half the time -
+    which is how a chord menu ends up offering D sharp major, a chord whose
+    third is an F double sharp and which nobody has ever written.
+*/
+std::string rootNames();
+
 /** Every kind of fretboard question the quiz can set. */
 std::string quizKinds();
 
@@ -43,13 +53,14 @@ std::string quizKinds();
     @param toFret      highest fret to search
     @param maxShapes   how many to return
     @param simpleOnly  non-zero for shapes with no barre and no stretch
+    @param capo        the fret a capo is clamped at, or 0 for none
 
     The list is the whole point of the "another voicing" button: it comes back
     already spread across the neck, so pressing it walks somewhere new rather
     than nudging one finger.
 */
 std::string chordShapes (const char* symbol, const char* tuningKey,
-                         int fromFret, int toFret, int maxShapes, int simpleOnly);
+                         int fromFret, int toFret, int maxShapes, int simpleOnly, int capo);
 
 /** What a set of fretted strings is called.
 

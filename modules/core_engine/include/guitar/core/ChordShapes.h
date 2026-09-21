@@ -34,7 +34,8 @@ struct ChordShape
         a muted one. This is the label that turns a diagram into a lesson. */
     std::vector<std::string> degrees;
 
-    int baseFret {};        ///< lowest fretted fret; 0 when nothing is fretted
+    int capo {};            ///< the fret a capo is at, or 0 for none
+    int baseFret {};        ///< lowest fretted fret; the capo's fret when nothing is fretted
     int barreFret {};       ///< 0 when there is no barre
     int barreFromString {}; ///< first string under the barre, when there is one
     int barreToString {};
@@ -76,6 +77,15 @@ struct ShapeSearch
     bool allowInversions { true };
 
     bool allowBarre { true };
+
+    /** The fret a capo is clamped at, or 0 for none.
+
+        A capo is a new nut: the strings it holds become the open strings, and
+        nothing below it can sound. That is the whole of it as far as the search
+        is concerned - which is why a capo needs no new kind of shape, only a
+        different place to start counting from.
+    */
+    int capo { 0 };
 
     /** Only shapes that need no barre and no stretch. What the "easy shapes
         only" switch in a shell asks for. */

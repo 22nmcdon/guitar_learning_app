@@ -126,7 +126,13 @@ ShapeReading identifyShape (const Tuning& tuning, const std::vector<int>& frets)
             Chord chord;
             chord.root = root;
             chord.quality = quality;
-            chord.symbol = pitchClassName (root) + quality.suffix;
+
+            // A shape read off the neck carries no key with it, so there is
+            // nothing to decide between A sharp and B flat here - sharps, and
+            // the chord is spelled consistently from that rather than being
+            // left with a root spelling it does not have.
+            chord.rootSpelling = parseSpelling (pitchClassName (root)).value_or (NoteSpelling {});
+            chord.symbol = chord.rootSpelling.name() + quality.suffix;
 
             const auto chordNotes = chord.pitchClasses();
             std::set<PitchClass> inChord (chordNotes.begin(), chordNotes.end());
@@ -241,7 +247,7 @@ ShapeVerdict checkShape (const Chord& chord, const Tuning& tuning, const std::ve
         verdict.degrees.push_back (degree.value_or ("!"));
 
         if (! degree.has_value())
-            verdict.outside.push_back (midiNoteName (note));
+            verdict.outside.push_back (chord.spelledMidiNote (note));
     }
 
     if (played.empty())
@@ -287,8 +293,8 @@ ShapeVerdict checkShape (const Chord& chord, const Tuning& tuning, const std::ve
         verdict.correct = true;
         verdict.verdict = "That's it, inverted";
         verdict.detail = "All the right notes, with "
-                       + pitchClassName (toPitchClass (lowest)) + " at the bottom rather than "
-                       + pitchClassName (wantedBass) + ". A real voicing - just a different one.";
+                       + chord.spelledPitchClass (toPitchClass (lowest)) + " at the bottom rather than "
+                       + chord.spelledPitchClass (wantedBass) + ". A real voicing - just a different one.";
         return verdict;
     }
 

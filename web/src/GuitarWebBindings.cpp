@@ -46,16 +46,22 @@ GUITAR_EXPORT const char* guitarChordQualities()
     return hold (guitar::api::chordQualities());
 }
 
+GUITAR_EXPORT const char* guitarRootNames()
+{
+    return hold (guitar::api::rootNames());
+}
+
 GUITAR_EXPORT const char* guitarQuizKinds()
 {
     return hold (guitar::api::quizKinds());
 }
 
 GUITAR_EXPORT const char* guitarChordShapes (const char* symbol, const char* tuningKey,
-                                             int fromFret, int toFret, int maxShapes, int simpleOnly)
+                                             int fromFret, int toFret, int maxShapes,
+                                             int simpleOnly, int capo)
 {
     return hold (guitar::api::chordShapes (orEmpty (symbol), orEmpty (tuningKey),
-                                           fromFret, toFret, maxShapes, simpleOnly));
+                                           fromFret, toFret, maxShapes, simpleOnly, capo));
 }
 
 GUITAR_EXPORT const char* guitarIdentifyShape (const char* tuningKey, const char* fretsCsv)

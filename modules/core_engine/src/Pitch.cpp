@@ -165,6 +165,98 @@ std::optional<int> parseMidiNote (std::string_view text)
     return (octave + 1) * semitonesPerOctave + parsed->pitchClass;
 }
 
+namespace
+{
+    /** Where each letter sits in the octave. */
+    constexpr std::array<int, 7> letterPitches { 0, 2, 4, 5, 7, 9, 11 };
+    constexpr std::array<char, 7> letterNames { 'C', 'D', 'E', 'F', 'G', 'A', 'B' };
+}
+
+PitchClass NoteSpelling::pitchClass() const noexcept
+{
+    return toPitchClass (letterPitches[static_cast<std::size_t> (((letter % 7) + 7) % 7)] + alteration);
+}
+
+std::string NoteSpelling::name() const
+{
+    std::string out (1, letterNames[static_cast<std::size_t> (((letter % 7) + 7) % 7)]);
+
+    for (auto i = 0; i < alteration; ++i)
+        out += '#';
+
+    for (auto i = 0; i > alteration; --i)
+        out += 'b';
+
+    return out;
+}
+
+std::optional<NoteSpelling> parseSpelling (std::string_view text)
+{
+    if (text.empty())
+        return std::nullopt;
+
+    NoteSpelling spelling;
+    auto found = false;
+
+    for (std::size_t i = 0; i < letterNames.size(); ++i)
+        if (letterNames[i] == std::toupper (static_cast<unsigned char> (text[0])))
+        {
+            spelling.letter = static_cast<int> (i);
+            found = true;
+        }
+
+    if (! found)
+        return std::nullopt;
+
+    for (std::size_t i = 1; i < text.size(); ++i)
+    {
+        if (text[i] == '#')
+            ++spelling.alteration;
+        else if (text[i] == 'b')
+            --spelling.alteration;
+        else
+            return std::nullopt;
+    }
+
+    return spelling;
+}
+
+NoteSpelling spellAbove (const NoteSpelling& root, int semitones, int degreeStep)
+{
+    NoteSpelling spelled;
+    spelled.letter = ((root.letter + degreeStep) % 7 + 7) % 7;
+
+    // The letter is decided; the accidental is then whatever it takes to reach
+    // the note that was actually asked for.
+    const auto wanted = toPitchClass (root.pitchClass() + semitones);
+    const auto natural = letterPitches[static_cast<std::size_t> (spelled.letter)];
+
+    auto alteration = wanted - natural;
+
+    // Fold into the nearest way of writing it: a note is at most a double sharp
+    // or a double flat from its letter, never ten semitones above it.
+    while (alteration > 6) alteration -= semitonesPerOctave;
+    while (alteration < -6) alteration += semitonesPerOctave;
+
+    spelled.alteration = alteration;
+    return spelled;
+}
+
+std::string preferredRootName (PitchClass pitchClass, bool minorKey)
+{
+    // Read off what music actually writes. The three that differ are the ones
+    // worth knowing: C# minor rather than Db minor, Eb major rather than D#
+    // major, and G# minor rather than Ab minor.
+    static const std::array<const char*, semitonesPerOctave> major
+        { "C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B" };
+
+    static const std::array<const char*, semitonesPerOctave> minor
+        { "C", "C#", "D", "Eb", "E", "F", "F#", "G", "G#", "A", "Bb", "B" };
+
+    const auto folded = static_cast<std::size_t> (toPitchClass (pitchClass));
+    return minorKey ? minor[folded] : major[folded];
+}
+
 std::string intervalName (int semitones, bool spellThirdAsMinor)
 {
     switch (toPitchClass (semitones))

@@ -1,0 +1,16 @@
+{
+  "name": "Guitar Learning App",
+  "short_name": "Fretboard",
+  "description": "Chord voicings and the fretboard: every way of playing a chord, and what the notes are.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#faf6f0",
+  "theme_color": "#4b3227",
+  "categories": ["education", "music"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -155,7 +155,7 @@ try {
   check("and Back comes back to it", (await shapeOnNeck()) === firstShape);
 
   // A different chord, from the menu the engine filled.
-  await page.locator('#roots button[data-note="A"]').click();
+  await page.locator('#roots button[data-note="9"]').click();
   await page.locator('#qualities button[data-suffix="m7"]').click();
   await page.waitForFunction(() =>
     document.getElementById("chordTitle").textContent.startsWith("A"));
@@ -223,10 +223,134 @@ try {
 
   check("degrees come back", (await shapeOnNeck()).includes(":R"));
 
+  // --- a capo ----------------------------------------------------------------
+  await page.locator('#roots button[data-note="3"]').click();
+  await page.locator('#qualities button[data-suffix=""]').click();
+  // The button offers both names; the chord is written with the one music uses,
+  // which for a major chord on that note is E flat and not D sharp.
+  await page.waitForFunction(() =>
+    document.getElementById("chordTitle").textContent.startsWith("E\u266D"));
+
+  await page.locator("#capo").selectOption("3");
+  await page.waitForFunction(() => document.querySelectorAll("#neck .at-capo").length > 0);
+
+  const capoShape = await shapeOnNeck();
+
+  // The muted strings are marked at the capo rather than sounded, so they are
+  // not part of "nothing sounds below it".
+  const capoFrets = capoShape.split(" ")
+    .filter((entry) => !entry.endsWith(":\u00D7"))
+    .map((entry) => Number(entry.split(":")[1]));
+
+  check(`a muted string is crossed at the capo, not at the nut`,
+    capoShape.includes(":3:\u00D7") && !capoShape.includes(":0:\u00D7"));
+
+  check(`a capo is drawn on the neck (${await page.locator("#neck .at-capo").count()} cells)`,
+    (await page.locator("#neck .at-capo").count()) === 6
+    && (await page.locator("#neck .behind-capo").count()) > 0);
+
+  check(`and nothing sounds below it (frets ${capoFrets.join(",")})`,
+    capoFrets.every((fret) => fret >= 3));
+
+  check(`the shape is named for the grip you already know `
+      + `(${await page.locator("#voicingNote").innerText()})`,
+    (await page.locator("#voicingNote").innerText()).includes("your C shape"));
+
+  // A capo belongs to chord practice: the quiz asks about the real neck.
+  await page.locator("#modeFretboard").click();
+  await page.waitForFunction(() => document.querySelectorAll("#neck .at-capo").length === 0);
+
+  check("a capo is put away when learning the neck",
+    (await page.locator("#neck .behind-capo").count()) === 0
+    && (await page.locator("#capo").isHidden()));
+
+  await page.locator("#modeChords").click();
+  await page.waitForFunction(() => document.querySelectorAll("#neck .at-capo").length === 6);
+
+  check("and comes back with the chords", (await page.locator("#capo").isVisible()));
+
+  await page.locator("#capo").selectOption("0");
+  await page.waitForFunction(() => document.querySelectorAll("#neck .at-capo").length === 0);
+
+  // --- spelling --------------------------------------------------------------
+  await page.locator('#roots button[data-note="10"]').click();
+  await page.locator('#qualities button[data-suffix="7"]').click();
+  await page.waitForFunction(() =>
+    document.getElementById("chordNotes").textContent.startsWith("The notes: B\u266D"));
+
+  const conventional = await page.locator("#chordNotes").innerText();
+
+  // A dominant seventh on that note is a B flat seven in every chart ever
+  // printed, so that is what the button marked A#/Bb builds.
+  check(`the root menu offers both names and uses the one music does `
+      + `(${conventional.replace(/\s+/g, " ").slice(0, 46)})`,
+    conventional.includes("B\u266D (R)") && conventional.includes("A\u266D (\u266D7)"));
+
+  // The same four notes typed the other way round: the page has no way to type
+  // a flat root, so this goes through the engine the way a chart would.
+  const flat = await page.evaluate(async () => {
+    const answer = await window.__spell("Bb7");
+    return answer.notes.join(" ") + " | " + answer.shapes[0].noteNames.filter(Boolean).join(" ");
+  });
+
+  check(`and a flat chord reads flat (${flat})`,
+    flat.includes("Bb (R)") && flat.includes("Ab (b7)") && !flat.includes("A#"));
+
+  await page.locator('#roots button[data-note="0"]').click();
+  await page.locator('#qualities button[data-suffix=""]').click();
+  await page.waitForFunction(() => document.getElementById("chordTitle").textContent.startsWith("C "));
+
+  // --- reachable without a mouse ---------------------------------------------
+  check("the neck is one tab stop, not seventy-eight",
+    (await page.evaluate(() =>
+      document.querySelectorAll('#neck button[tabindex="0"]').length)) === 1);
+
+  await page.locator('#neck [data-string="0"][data-fret="0"]').focus();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowUp");
+
+  const landed = await page.evaluate(() => {
+    const cell = document.activeElement;
+    return `${cell.dataset.string}:${cell.dataset.fret}`;
+  });
+
+  check(`and the arrow keys walk it (${landed})`, landed === "1:2");
+
+  check("a screen reader is told what each fret is",
+    (await page.evaluate(() =>
+      document.querySelector('#neck [data-string="0"][data-fret="5"]').getAttribute("aria-label")))
+      .includes("6th string"));
+
+  check("and what changed when nothing moved",
+    (await page.evaluate(() => document.getElementById("announcer").textContent)).length > 10);
+
+  check("the root is marked as well as coloured",
+    await page.evaluate(() => {
+      const root = document.querySelector('#neck .dot[data-degree="R"]');
+      return !!root && getComputedStyle(root).boxShadow.split("rgb").length > 2;
+    }));
+
+  // --- installable -----------------------------------------------------------
+  check("the page offers a manifest",
+    (await page.evaluate(() => document.querySelector("link[rel=manifest]")?.getAttribute("href")))
+      === "manifest.json");
+
+  const manifest = await page.evaluate(async () => {
+    const response = await fetch("manifest.json");
+    return response.ok ? await response.json() : null;
+  });
+
+  check(`and the manifest is real (${manifest?.short_name}, ${manifest?.icons?.length} icons)`,
+    manifest !== null && manifest.icons.length === 2 && manifest.display === "standalone");
+
+  const icon = await page.evaluate(async () => (await fetch("icon-192.png")).status);
+  check(`and its icons are there (${icon})`, icon === 200);
+
   // --- changing the shape yourself -------------------------------------------
   // The first tap takes the neck over from the suggestion and starts from it,
   // so this is a learner nudging one finger rather than building from silence.
-  await page.locator('#roots button[data-note="C"]').click();
+  await page.locator('#roots button[data-note="0"]').click();
   await page.locator('#qualities button[data-suffix=""]').click();
   await page.waitForFunction(() =>
     document.getElementById("chordTitle").textContent.startsWith("C "));
@@ -536,9 +660,12 @@ try {
 
   // Asserting on the cache rather than on a reload: the browser's own HTTP
   // cache will happily answer a reload and make a broken worker look fine.
-  check(`the offline worker stocked the engine and the page (${cached.files.length} files)`,
+  check(`the offline worker stocked the engine, the page and the icons `
+      + `(${cached.files.length} files)`,
     cached.active && cached.files.some((path) => path.endsWith("guitar-engine.js"))
-    && cached.files.some((path) => path.endsWith("index.html") || path.endsWith("/")));
+    && cached.files.some((path) => path.endsWith("index.html") || path.endsWith("/"))
+    && cached.files.some((path) => path.endsWith("manifest.json"))
+    && cached.files.some((path) => path.endsWith("icon-192.png")));
 
   console.log(`\n${checks - failures.length}/${checks} checks passed`);
 } catch (error) {

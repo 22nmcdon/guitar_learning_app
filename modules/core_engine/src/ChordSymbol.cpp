@@ -129,6 +129,70 @@ std::vector<PitchClass> Chord::pitchClasses() const
     return classes;
 }
 
+int Chord::degreeStepFor (int semitones) const
+{
+    const auto has = [this] (int interval)
+    {
+        return std::find (quality.intervals.begin(), quality.intervals.end(), interval)
+                 != quality.intervals.end();
+    };
+
+    const auto hasPerfectFifth = has (7);
+
+    // A stack of minor thirds and nothing else: the only chord in which nine
+    // semitones above the root is a seventh rather than a sixth.
+    const auto isDiminishedSeventh = [&has] { return has (3) && has (6) && ! has (10) && ! has (11); };
+
+    switch (toPitchClass (semitones))
+    {
+        case 0:  return 0;                                  // the root
+        case 1:  return 1;                                  // flat ninth
+        case 2:  return 1;                                  // ninth
+        case 3:  return quality.minorThird ? 2 : 1;         // minor third, or a sharp ninth
+        case 4:  return 2;                                  // third
+        case 5:  return 3;                                  // eleventh
+        case 6:  return hasPerfectFifth ? 3 : 4;            // sharp eleventh, or a flat fifth
+        case 7:  return 4;                                  // fifth
+        case 8:  return hasPerfectFifth ? 5 : 4;            // flat thirteenth, or a sharp fifth
+        // Nine semitones is a sixth in almost every chord, and a seventh in the
+        // one built out of stacked minor thirds: a diminished seventh is spelled
+        // C Eb Gb Bbb, with a seventh on the seventh letter, not an A. The
+        // double flat looks alarming and is what the chord actually is.
+        case 9:  return isDiminishedSeventh() ? 6 : 5;
+        case 10: return 6;                                  // flat seventh
+        case 11: return 6;                                  // seventh
+        default: return 0;
+    }
+}
+
+std::string Chord::spelledNote (int semitones) const
+{
+    return spellAbove (rootSpelling, semitones, degreeStepFor (semitones)).name();
+}
+
+std::string Chord::spelledPitchClass (PitchClass pitchClass) const
+{
+    const auto distance = ascendingInterval (root, pitchClass);
+
+    for (auto interval : quality.intervals)
+        if (toPitchClass (interval) == distance)
+            return spelledNote (interval);
+
+    // Not in the chord, so the chord has no opinion on which letter it wants.
+    // The root's accidental is the next best guide: a flat chord's outside
+    // notes read as flats.
+    return pitchClassName (pitchClass, rootSpelling.alteration < 0 ? Accidental::flats
+                                                                   : Accidental::sharps);
+}
+
+std::string Chord::spelledMidiNote (int midiNote) const
+{
+    // The octave comes from the pitch rather than from the letter. They differ
+    // only for a C flat or a B sharp, neither of which any chord in the
+    // catalogue produces, and the alternative is arithmetic nobody can read.
+    return spelledPitchClass (toPitchClass (midiNote)) + std::to_string (octaveOf (midiNote));
+}
+
 std::optional<std::string> Chord::degreeOf (PitchClass pitchClass) const
 {
     const auto distance = ascendingInterval (root, pitchClass);
@@ -266,15 +330,15 @@ std::optional<Chord> parseChord (std::string_view text)
         chord.quality.name += std::string (" ") + it->text;
     }
 
-    chord.symbol = pitchClassName (chord.root,
-                                   // Keep the spelling that was typed: someone
-                                   // asking for Bb wants to read Bb back, not A#.
-                                   text.size() > 1 && text[1] == 'b' ? Accidental::flats
-                                                                     : Accidental::sharps)
-                 + chord.quality.suffix;
+    // The spelling that was typed is the spelling of the whole chord, not just
+    // of its name: someone asking for Bb wants to read Bb, D, F, Ab back.
+    chord.rootSpelling = parseSpelling (text.substr (0, root->charactersConsumed))
+                             .value_or (NoteSpelling {});
+
+    chord.symbol = chord.rootSpelling.name() + chord.quality.suffix;
 
     if (chord.bass.has_value())
-        chord.symbol += "/" + pitchClassName (*chord.bass);
+        chord.symbol += "/" + chord.spelledPitchClass (*chord.bass);
 
     return chord;
 }

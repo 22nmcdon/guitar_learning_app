@@ -52,6 +52,15 @@ struct Chord
     PitchClass root {};
     ChordQuality quality;
 
+    /** How the root was written, which decides how everything else is.
+
+        A B flat chord is spelled B flat, D, F, A flat - not A sharp, D, F, G
+        sharp - and the difference is not cosmetic to anyone reading a chart.
+        Carrying the root's letter is what lets every other note be written on
+        the letter its degree demands.
+    */
+    NoteSpelling rootSpelling;
+
     /** A slash chord's bass note, when one was asked for and it is not the
         root. The shape generator treats this as a requirement on the lowest
         sounding string rather than as another chord tone. */
@@ -67,6 +76,27 @@ struct Chord
 
     /** The same thing in words, for a learner: "the flat seventh". */
     std::optional<std::string> degreeDescription (PitchClass pitchClass) const;
+
+    /** Which letter, counting in letters rather than semitones, the note
+        @p semitones above the root is written on.
+
+        The chord decides this and nothing else can: three semitones is a minor
+        third in a minor chord and a sharp ninth in a dominant one, and a
+        tritone is a flat fifth in a diminished chord and a sharp eleventh in a
+        chord that still has its fifth.
+    */
+    int degreeStepFor (int semitones) const;
+
+    /** The note @p semitones above the root, spelled the way this chord writes
+        it: "Ab" for the seventh of Bb7, "G#" for the seventh of A#7. */
+    std::string spelledNote (int semitones) const;
+
+    /** A pitch class in this chord, spelled. Falls back to naming it against
+        the root's own accidental when it is not a chord tone at all. */
+    std::string spelledPitchClass (PitchClass pitchClass) const;
+
+    /** "Bb2", "Ab3" - the same spelling with the octave the note sounds in. */
+    std::string spelledMidiNote (int midiNote) const;
 };
 
 /** Reads "C", "Am", "G7", "F#m7b5", "Bb13", "D/F#".

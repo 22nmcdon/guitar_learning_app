@@ -43,7 +43,7 @@ TEST ("the catalogues come back as lists a menu can be built from")
 
 TEST ("a chord comes back with shapes, and each shape with a hand")
 {
-    const auto json = chordShapes ("C", "standard", 0, 12, 8, 0);
+    const auto json = chordShapes ("C", "standard", 0, 12, 8, 0, 0);
 
     CHECK (ok (json));
     CHECK (says (json, "\"symbol\":\"C\""));
@@ -57,7 +57,7 @@ TEST ("a chord comes back with shapes, and each shape with a hand")
 
 TEST ("the notes of the chord are named as well as its shapes")
 {
-    const auto json = chordShapes ("Am7", "standard", 0, 12, 4, 0);
+    const auto json = chordShapes ("Am7", "standard", 0, 12, 4, 0, 0);
     CHECK (says (json, "A (R)"));
     CHECK (says (json, "C (b3)"));
     CHECK (says (json, "G (b7)"));
@@ -65,19 +65,54 @@ TEST ("the notes of the chord are named as well as its shapes")
 
 TEST ("a tuning the engine does not have is an error, not an empty answer")
 {
-    CHECK (says (chordShapes ("C", "sitar", 0, 12, 8, 0), "\"ok\":false"));
-    CHECK (says (chordShapes ("H", "standard", 0, 12, 8, 0), "cannot read the chord"));
+    CHECK (says (chordShapes ("C", "sitar", 0, 12, 8, 0, 0), "\"ok\":false"));
+    CHECK (says (chordShapes ("H", "standard", 0, 12, 8, 0, 0), "cannot read the chord"));
     CHECK (says (fretboardNotes ("sitar", 0, 12), "\"ok\":false"));
     CHECK (says (positionsFor ("H", "standard", 0, 12), "not a note name"));
 }
 
 TEST ("asking for simple shapes changes what comes back")
 {
-    const auto everything = chordShapes ("F", "standard", 0, 12, 8, 0);
-    const auto simple = chordShapes ("F", "standard", 0, 12, 8, 1);
+    const auto everything = chordShapes ("F", "standard", 0, 12, 8, 0, 0);
+    const auto simple = chordShapes ("F", "standard", 0, 12, 8, 1, 0);
 
     CHECK (says (everything, "\"barreFret\":1"));
     CHECK (! says (simple, "\"barreFret\":1"));
+}
+
+TEST ("a capo comes back on every shape it shaped")
+{
+    const auto json = chordShapes ("Eb", "standard", 0, 12, 4, 0, 3);
+
+    CHECK (ok (json));
+    CHECK (says (json, "\"capo\":3"));
+    CHECK (says (json, "at the capo"));
+    CHECK (says (json, "your C shape"));
+
+    // And the spelling holds up under it: an E flat is flat all the way down.
+    CHECK (says (json, "Eb (R)"));
+    CHECK (says (json, "Bb (5)"));
+}
+
+TEST ("a chord is spelled the way it was written, everywhere")
+{
+    const auto flat = chordShapes ("Bb7", "standard", 0, 12, 2, 0, 0);
+
+    CHECK (says (flat, "\"symbol\":\"Bb7\""));
+    CHECK (says (flat, "Bb (R)"));
+    CHECK (says (flat, "Ab (b7)"));
+    CHECK (! says (flat, "A#"));
+    CHECK (! says (flat, "G#"));
+
+    // The same chord written the other way keeps that instead.
+    CHECK (says (chordShapes ("A#7", "standard", 0, 12, 2, 0, 0), "A# (R)"));
+}
+
+TEST ("a neck tuned in flats is read in flats")
+{
+    CHECK (says (fretboardNotes ("half-step-down", 0, 3), "\"open\":\"Eb2\""));
+    CHECK (says (fretboardNotes ("standard", 0, 3), "\"open\":\"E2\""));
+    CHECK (says (tunings(), "\"openNames\":[\"Eb\",\"Ab\",\"Db\",\"Gb\",\"Bb\",\"Eb\"]"));
 }
 
 TEST ("a shape played is named back")
@@ -239,7 +274,7 @@ TEST ("a quiz the engine cannot set comes back as an error")
 
 TEST ("a null from a shell is an empty string, not a crash")
 {
-    CHECK (says (chordShapes (nullptr, nullptr, 0, 12, 8, 0), "\"ok\":false"));
+    CHECK (says (chordShapes (nullptr, nullptr, 0, 12, 8, 0, 0), "\"ok\":false"));
     CHECK (ok (identifyShape (nullptr, nullptr)));
     CHECK (ok (fretboardNotes (nullptr, 0, 5)));
 }

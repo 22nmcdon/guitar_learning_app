@@ -50,13 +50,14 @@ namespace
 
         if (name == "guitarTunings")        return api::tunings();
         if (name == "guitarChordQualities") return api::chordQualities();
+        if (name == "guitarRootNames")      return api::rootNames();
         if (name == "guitarQuizKinds")      return api::quizKinds();
         if (name == "guitarQuizNext")       return api::quizNext();
         if (name == "guitarQuizEnd")        return api::quizEnd();
 
         if (name == "guitarChordShapes")
             return api::chordShapes (text (0).c_str(), text (1).c_str(),
-                                     number (2), number (3), number (4), number (5));
+                                     number (2), number (3), number (4), number (5), number (6));
 
         if (name == "guitarIdentifyShape")
             return api::identifyShape (text (0).c_str(), text (1).c_str());

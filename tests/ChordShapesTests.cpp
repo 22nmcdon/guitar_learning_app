@@ -388,6 +388,68 @@ TEST ("the CAGED letters follow the tuning, not the string number")
         CHECK (shape.name.find ("-shape") == std::string::npos);
 }
 
+TEST ("a capo is a new nut: nothing below it sounds")
+{
+    ShapeSearch search;
+    search.capo = 5;
+
+    const auto shapes = shapesFor ("A", "standard", search);
+    CHECK (! shapes.empty());
+
+    for (const auto& shape : shapes)
+    {
+        CHECK_EQ (shape.capo, 5);
+
+        for (auto fret : shape.frets)
+            CHECK (fret == muted || fret >= 5);
+    }
+}
+
+TEST ("a string held by the capo needs no finger")
+{
+    ShapeSearch search;
+    search.capo = 3;
+
+    // With a capo on the third fret, G is the open E shape - the same grip, the
+    // same three fingers, and nothing under the index finger at all.
+    const auto shapes = shapesFor ("G", "standard", search);
+
+    CHECK ((shapes.front().frets == std::vector<int> { 3, 5, 5, 4, 3, 3 }));
+    CHECK ((shapes.front().fingers == std::vector<int> { 0, 2, 3, 1, 0, 0 }));
+    CHECK_EQ (shapes.front().fingersUsed, 3);
+    CHECK_EQ (shapes.front().difficulty, std::string ("open"));
+}
+
+TEST ("the shape a capo gives you is named for the chord it would have been")
+{
+    ShapeSearch search;
+    search.capo = 3;
+
+    // The reason to own a capo: E flat, which is a barre chord otherwise, is
+    // the C shape you already know.
+    const auto shapes = shapesFor ("Eb", "standard", search);
+
+    CHECK (shapes.front().name.find ("at the capo") != std::string::npos);
+    CHECK (shapes.front().note.find ("your C shape") != std::string::npos);
+}
+
+TEST ("a capo does not change what a chord is")
+{
+    // Every invariant still holds above the capo: it is the same chord and the
+    // same four fingers, starting from somewhere else.
+    ShapeSearch search;
+    search.capo = 4;
+
+    auto chord = parseChord ("D").value();
+
+    for (const auto& shape : chordShapes (chord, tuningFor ("standard").value(), search))
+    {
+        CHECK (checkShape (chord, tuningFor ("standard").value(), shape.frets).correct);
+        CHECK (shape.fingersUsed <= 4);
+        CHECK (shape.span <= 3);
+    }
+}
+
 TEST ("a chord nobody can play on six strings comes back with nothing rather than a lie")
 {
     ShapeSearch search;

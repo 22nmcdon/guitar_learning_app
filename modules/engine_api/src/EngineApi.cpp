@@ -199,7 +199,9 @@ std::string tunings()
                std::vector<std::string> names;
 
                for (auto string = 0; string < board.stringCount(); ++string)
-                   names.push_back (pitchClassName (tuning.openNotes[static_cast<std::size_t> (string)]));
+                   names.push_back (pitchClassName (tuning.openNotes[static_cast<std::size_t> (string)],
+                                                    tuning.spelling.find ('b') != std::string::npos
+                                                        ? Accidental::flats : Accidental::sharps));
 
                return "{\"key\":" + quoted (tuning.key)
                     + ",\"name\":" + quoted (tuning.name)
@@ -227,6 +229,25 @@ std::string chordQualities()
          + "}";
 }
 
+std::string rootNames()
+{
+    std::string roots = "[";
+
+    for (PitchClass pitchClass = 0; pitchClass < semitonesPerOctave; ++pitchClass)
+    {
+        if (pitchClass > 0)
+            roots += ",";
+
+        roots += "{\"pitchClass\":" + std::to_string (pitchClass)
+               + ",\"sharp\":" + quoted (pitchClassName (pitchClass, Accidental::sharps))
+               + ",\"flat\":" + quoted (pitchClassName (pitchClass, Accidental::flats))
+               + ",\"major\":" + quoted (preferredRootName (pitchClass, false))
+               + ",\"minor\":" + quoted (preferredRootName (pitchClass, true)) + "}";
+    }
+
+    return "{\"ok\":true,\"roots\":" + roots + "]}";
+}
+
 std::string quizKinds()
 {
     return "{\"ok\":true,\"kinds\":"
@@ -243,7 +264,7 @@ std::string quizKinds()
 
 //==============================================================================
 std::string chordShapes (const char* symbol, const char* tuningKey,
-                         int fromFret, int toFret, int maxShapes, int simpleOnly)
+                         int fromFret, int toFret, int maxShapes, int simpleOnly, int capo)
 {
     auto chord = parseChord (text (symbol));
 
@@ -260,6 +281,7 @@ std::string chordShapes (const char* symbol, const char* tuningKey,
     search.toFret = toFret > 0 ? toFret : 12;
     search.maxShapes = maxShapes > 0 ? maxShapes : 8;
     search.simpleOnly = simpleOnly != 0;
+    search.capo = capo;
 
     const auto shapes = core::chordShapes (*chord, *tuning, search);
     const Fretboard board { *tuning };
@@ -267,21 +289,22 @@ std::string chordShapes (const char* symbol, const char* tuningKey,
     std::vector<std::string> chordNotes;
 
     for (auto interval : chord->quality.intervals)
-        chordNotes.push_back (pitchClassName (chord->root + interval) + " ("
+        chordNotes.push_back (chord->spelledNote (interval) + " ("
                               + intervalName (interval, chord->quality.minorThird) + ")");
 
     return "{\"ok\":true,\"symbol\":" + quoted (chord->symbol)
          + ",\"quality\":" + quoted (chord->quality.name)
          + ",\"summary\":" + quoted (chord->quality.summary)
          + ",\"notes\":" + jsonStrings (chordNotes)
-         + ",\"shapes\":" + jsonArray (shapes, [&board] (const ChordShape& shape)
+         + ",\"shapes\":" + jsonArray (shapes, [&board, &chord] (const ChordShape& shape)
            {
                std::vector<std::string> noteNames;
 
                for (std::size_t string = 0; string < shape.frets.size(); ++string)
                    noteNames.push_back (shape.frets[string] == muted
                                             ? std::string()
-                                            : midiNoteName (board.noteAt (static_cast<int> (string), shape.frets[string])));
+                                            : chord->spelledMidiNote (board.noteAt (static_cast<int> (string),
+                                                                                    shape.frets[string])));
 
                return "{\"frets\":" + jsonNumbers (shape.frets)
                     + ",\"fingers\":" + jsonNumbers (shape.fingers)
@@ -292,6 +315,7 @@ std::string chordShapes (const char* symbol, const char* tuningKey,
                     + ",\"note\":" + quoted (shape.note)
                     + ",\"bassNote\":" + quoted (shape.bassNote)
                     + ",\"omitted\":" + jsonStrings (shape.omitted)
+                    + ",\"capo\":" + std::to_string (shape.capo)
                     + ",\"baseFret\":" + std::to_string (shape.baseFret)
                     + ",\"barreFret\":" + std::to_string (shape.barreFret)
                     + ",\"barreFrom\":" + std::to_string (shape.barreFromString)
@@ -361,6 +385,12 @@ std::string fretboardNotes (const char* tuningKey, int fromFret, int toFret)
     if (! tuning.has_value())
         return jsonError ("no tuning called '" + text (tuningKey) + "'");
 
+    // A neck has no chord and no key, so nothing decides between A sharp and B
+    // flat except the tuning it is in: somebody tuned to E flat reads their
+    // strings in flats, and the rest of us read sharps.
+    const auto accidental = tuning->spelling.find ('b') != std::string::npos
+                                ? Accidental::flats : Accidental::sharps;
+
     const Fretboard board { *tuning };
     const auto low = std::max (0, fromFret);
     const auto high = std::min (toFret > 0 ? toFret : 12, highestFret);
@@ -378,12 +408,12 @@ std::string fretboardNotes (const char* tuningKey, int fromFret, int toFret)
         for (auto fret = low; fret <= high; ++fret)
         {
             notes.push_back (board.noteAt (string, fret));
-            names.push_back (pitchClassName (board.noteAt (string, fret)));
+            names.push_back (pitchClassName (board.noteAt (string, fret), accidental));
         }
 
         strings += "{\"string\":" + std::to_string (string)
                  + ",\"name\":" + quoted (board.stringName (string))
-                 + ",\"open\":" + quoted (midiNoteName (board.noteAt (string, 0)))
+                 + ",\"open\":" + quoted (midiNoteName (board.noteAt (string, 0), accidental))
                  + ",\"notes\":" + jsonNumbers (notes)
                  + ",\"names\":" + jsonStrings (names) + "}";
     }

@@ -23,7 +23,11 @@ em++ -O2 -std=c++17 \
   -s EXPORT_NAME=createGuitarEngine \
   -s ENVIRONMENT=web \
   -s ALLOW_MEMORY_GROWTH=1 \
-  -s EXPORTED_FUNCTIONS='["_guitarTunings","_guitarChordQualities","_guitarQuizKinds","_guitarChordShapes","_guitarIdentifyShape","_guitarCheckShape","_guitarFretboardNotes","_guitarPositionsFor","_guitarQuizStart","_guitarProgressMap","_guitarQuizAnswer","_guitarQuizNext","_guitarQuizEnd","_malloc","_free"]' \
+  -s EXPORTED_FUNCTIONS='["_guitarTunings","_guitarChordQualities","_guitarRootNames","_guitarQuizKinds","_guitarChordShapes","_guitarIdentifyShape","_guitarCheckShape","_guitarFretboardNotes","_guitarPositionsFor","_guitarQuizStart","_guitarProgressMap","_guitarQuizAnswer","_guitarQuizNext","_guitarQuizEnd","_malloc","_free"]' \
   -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap","UTF8ToString"]'
 
 echo "Built $out/guitar-engine.js ($(du -h "$out/guitar-engine.js" | cut -f1))"
+
+# What the page needs beside it to be installable. Copied rather than linked, so
+# the built directory stands on its own wherever it is served from.
+cp "$here/manifest.json" "$here/icon-192.png" "$here/icon-512.png" "$out/"

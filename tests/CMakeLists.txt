@@ -8,6 +8,7 @@ add_executable(guitar_core_tests
     TuningTests.cpp
     FretboardTests.cpp
     ChordSymbolTests.cpp
+    SpellingTests.cpp
     ChordShapesTests.cpp
     ShapeIdentifierTests.cpp
     ProgressTests.cpp

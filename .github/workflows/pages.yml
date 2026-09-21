@@ -38,7 +38,7 @@ jobs:
         run: |
           mkdir -p _site
           ./web/build.sh "$GITHUB_WORKSPACE/_site"
-          cp web/index.html web/sw.js _site/
+          cp web/index.html web/sw.js web/manifest.json web/icon-192.png web/icon-512.png _site/
 
           # Stamp the build into the page, so the site can be asked what it is
           # serving instead of the deploy log having to be read. The page also
@@ -61,6 +61,8 @@ jobs:
           test -s _site/index.html
           test -s _site/guitar-engine.js
           test -s _site/sw.js
+          test -s _site/manifest.json
+          test -s _site/icon-192.png
           ls -lh _site
 
       # A build that passes has never been the thing that goes wrong here: the

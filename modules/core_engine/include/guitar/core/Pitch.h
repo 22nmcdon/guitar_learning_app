@@ -74,6 +74,52 @@ struct ParsedRoot
 
 std::optional<ParsedRoot> parseRoot (std::string_view text);
 
+/** A note name taken apart: the letter it is written with, and how many
+    semitones the accidentals move it.
+
+    Spelling a note is not the same as naming a pitch class, and this is what
+    the difference needs. A B flat and an A sharp are one key on a piano and one
+    fret on a guitar, and they are different notes on paper: which letter a note
+    is written with is decided by the chord or key it belongs to, not by the
+    pitch. `docs/SPELLING.md` has the whole of it.
+*/
+struct NoteSpelling
+{
+    int letter {};       ///< 0 = C, 1 = D ... 6 = B
+    int alteration {};   ///< semitones from the natural letter: -1 is a flat, +1 a sharp
+
+    PitchClass pitchClass() const noexcept;
+    std::string name() const;     ///< "Bb", "F#", "F##"
+};
+
+/** Reads "Bb", "F#", "C" into a letter and an alteration. */
+std::optional<NoteSpelling> parseSpelling (std::string_view text);
+
+/** The note @p semitones above @p root, written with the letter that @p
+    degreeStep demands: 0 is the root's own letter, 2 a third above it, 4 a
+    fifth, and so on in letters rather than semitones.
+
+    This is what makes the seventh of B flat seven an A flat and not a G sharp:
+    the seventh of a chord is written on the seventh letter, whatever accidental
+    that takes.
+*/
+NoteSpelling spellAbove (const NoteSpelling& root, int semitones, int degreeStep);
+
+/** How a note is normally written as the root of a chord.
+
+    Both spellings of a black note are correct and only one of them is used:
+    nobody writes D sharp major, because it contains an F double sharp, and
+    nobody writes D flat minor, because it contains a B double flat. The
+    convention is the one with the smaller key signature, and it differs
+    between major and minor - C sharp minor is ordinary, D flat major is
+    ordinary, and their enharmonic twins are not.
+
+    This is a table rather than a calculation because it is a convention rather
+    than a derivation: it is what players write, and it is worth being able to
+    read it off the page here.
+*/
+std::string preferredRootName (PitchClass pitchClass, bool minorKey);
+
 /** Interval spelling relative to a chord root, e.g. 4 -> "3", 10 -> "b7".
 
     @param semitones          distance above the root, any range, folded to an octave

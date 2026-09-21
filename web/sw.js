@@ -22,7 +22,10 @@ const CACHE = "guitar-learning-app";
 // What a visit needs and nothing else: the page, and the engine behind it.
 // Paths are relative, so they resolve against wherever this is served from -
 // a project site lives under a path, not at a domain root.
-const ESSENTIALS = ["./", "index.html", "guitar-engine.js"];
+// The page, the engine behind it, and the two files that make it installable -
+// a home-screen icon that 404s is worse than no home-screen icon.
+const ESSENTIALS = ["./", "index.html", "guitar-engine.js",
+                    "manifest.json", "icon-192.png", "icon-512.png"];
 
 /* Fetched on install rather than left to the fetch handler below, and that is
    the whole difference between working offline and only seeming to.

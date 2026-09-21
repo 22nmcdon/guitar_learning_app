@@ -18,7 +18,7 @@ and frets rather than in MIDI notes that happen to be playable on a guitar.
 | `modules/engine_api` | The engine's answers as JSON - one wire format, read by both shells. Pure C++17. | core engine |
 | `web` | **The user interface.** One page, served on the web and hosted by the app, plus the WebAssembly build, the offline worker and the smoke test that drives the built page. | engine API (as JSON) |
 | `app` | Platform shell: a window with a webview showing `web/`. | engine API, JUCE |
-| `tests` | Engine unit tests (148), no JUCE, no third-party framework. | core engine, engine API |
+| `tests` | Engine unit tests (168), no JUCE, no third-party framework. | core engine, engine API |
 
 The core engine links no JUCE at all - that boundary is what keeps a future
 plugin or mobile target possible without a rewrite, and the build enforces it.
@@ -208,6 +208,22 @@ E shape is rooted on the *sixth* string, and in drop D the grip rooted on the
 string that moved gets no letter at all, because whatever it is it is not the
 E shape any more.
 
+### A capo
+
+A menu next to the tuning, and the engine treats it as what it is: a new nut.
+Nothing below it can sound, the strings it holds become the open strings, and
+the shape that comes back is named for the grip you already know.
+
+> **Open position, at the capo** — With the capo at 3, this is your C shape.
+
+That is the whole reason to own one, and it falls out of the same search rather
+than being a special case: put a capo at 3, ask for E flat, and what you get is
+the open C chord with three fingers and nothing under the index.
+
+The capo belongs to chord practice. Learning the neck is about the real neck, so
+the quiz asks about the real fret 1 whether or not something is clamped over it,
+and the control goes away with the rest of chord practice.
+
 ### Left-handed
 
 A menu next to the tuning. The neck is redrawn the other way round - nut on the
@@ -268,6 +284,12 @@ network-first so a deploy is live the moment it lands.
 notes at positions, every place a note lives, octave twins. One coordinate
 system, documented in `docs/FRETBOARD.md`.
 
+**Spelling** (`Pitch`, `Chord::spelledNote`) - a B flat seven is spelled B flat,
+D, F, A flat and not A sharp, D, F, G sharp. Chords are spelled from their
+root's letter, one letter per degree, which is why a diminished seventh comes
+back with a double flat in it and why the root menu offers both names of every
+black note and builds the chord with the one music uses. See `docs/SPELLING.md`.
+
 **Chords** (`ChordSymbol`) - 21 qualities from major to dominant thirteenth,
 read from the spellings people actually write (`Am`, `Amin`, `A-`, `AMI`),
 alterations (`7b9`, `7#5`, `m7b5`), slash chords. Each quality knows which of
@@ -289,8 +311,29 @@ the engine still has no clock.
 text the shell stores and hands back. The engine decides what it means and what
 to ask next; where the bytes live is the shell's business.
 
-All of it is covered by 148 unit tests with no third-party test framework, none
+All of it is covered by 168 unit tests with no third-party test framework, none
 of which need a GUI, a browser or a guitar.
+
+## Getting around it without a mouse
+
+The neck is one tab stop rather than seventy-eight: tab to it, then the arrow
+keys walk the strings and frets, `Home` and `End` jump to the nut and the
+twelfth. Every fret carries an `aria-label` naming its string, its fret and its
+note, and anything that changes without the focus moving - a new voicing, a
+verdict, a quiz question - is announced.
+
+Nothing is said by colour alone. The root wears a ring as well as its red, the
+record's four bands are told apart by fill, ring and outline as well as by hue,
+and every dot carries both of its facts in words for a screen reader and on
+hover. The green-to-red scale the record uses is precisely the pair a good
+number of people cannot separate, which is why none of it rests on the colour.
+
+## Installing it
+
+The served page is a progressive web app: visit it once and **Add to Home
+Screen** gives you an icon, a standalone window and the whole thing offline,
+because the engine and the page are cached on the first visit anyway. There is
+no server behind it to lose.
 
 ## Not built yet
 
